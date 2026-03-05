@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/dmsans/v15/rP2tp2ywxg089UriI5-g4vlH9VoD8CmcqZG40F9JadbnoEwAopxhS23PjQ.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/dmsans/v15/rP2tp2ywxg089UriI5-g4vlH9VoD8CmcqZG40F9JadbnoEwAkJxhS23PjQ.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/dmsans/v15/rP2tp2ywxg089UriI5-g4vlH9VoD8CmcqZG40F9JadbnoEwAfJthS23PjQ.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/dmsans/v15/rP2tp2ywxg089UriI5-g4vlH9VoD8CmcqZG40F9JadbnoEwARZthS23PjQ.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/dmsans/v15/rP2tp2ywxg089UriI5-g4vlH9VoD8CmcqZG40F9JadbnoEwAopthS23PjQ.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexmono/v19/-F63fjptAgt5VM-kVkqdyU8n5igg1l9kn-s.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexmono/v19/-F6qfjptAgt5VM-kVkqdyU8n3oQIwl1FgsAXHNlY.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexmono/v19/-F6qfjptAgt5VM-kVkqdyU8n3vgOwl1FgsAXHNlY.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/ibmplexmono/v19/-F6qfjptAgt5VM-kVkqdyU8n3pQPwl1FgsAXHNlY.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Syne';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/syne/v22/8vIS7w4qzmVxsWxjBZRjr0FKM_0KuT6kR47NCV5Z.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Syne';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/syne/v22/8vIS7w4qzmVxsWxjBZRjr0FKM_04uD6kR47NCV5Z.woff2) format('woff2');
+}
+
+@theme {
+  --color-atlas-black: #000000;
+  --color-atlas-bg: #060608;
+  --color-atlas-surface: #0A0A0E;
+  --color-atlas-card: #0F0F14;
+  --color-atlas-card-hover: #15151C;
+  --color-atlas-border: #1C1C26;
+  --color-atlas-border-light: #2A2A38;
+  --color-atlas-border-bright: #2A2A38;
+  --color-atlas-purple: #8B7BD8;
+  --color-atlas-purple-light: #B4A8EC;
+  --color-atlas-purple-dim: rgba(139,123,216,0.12);
+  --color-atlas-purple-dim-hover: rgba(139,123,216,0.2);
+  --color-atlas-purple-glow: rgba(139,123,216,0.3);
+  --color-atlas-green: #00E5A0;
+  --color-atlas-green-dim: rgba(0,229,160,0.12);
+  --color-atlas-green-glow: rgba(0,229,160,0.2);
+  --color-atlas-blue: #4DA8FF;
+  --color-atlas-blue-dim: rgba(77,168,255,0.1);
+  --color-atlas-orange: #FFB347;
+  --color-atlas-orange-dim: rgba(255,179,71,0.12);
+  --color-atlas-red: #FF5C5C;
+  --color-atlas-red-dim: rgba(255,92,92,0.1);
+  --color-atlas-cyan: #00D4FF;
+  --color-atlas-white: #FFFFFF;
+  --color-atlas-off-white: #E8E8F2;
+  --color-atlas-gray1: #C0C0D4;
+  --color-atlas-gray2: #8080A0;
+  --color-atlas-gray3: #505068;
+  --color-atlas-gray4: #282838;
+  --color-atlas-gray5: #141420;
+  --font-family-sans: 'DM Sans', 'Helvetica Neue', Arial, sans-serif;
+  --font-family-mono: 'IBM Plex Mono', 'Menlo', 'Consolas', monospace;
+  --font-family-display: 'Syne', 'DM Sans', sans-serif;
+}
