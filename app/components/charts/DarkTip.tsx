@@ -1,7 +1,7 @@
 export function DarkTip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-atlas-card border border-atlas-border rounded-lg px-3 py-2 shadow-xl">
+    <div className="bg-atlas-tooltip-bg border border-atlas-border rounded-lg px-3 py-2 shadow-xl">
       {label && (
         <div className="text-[10px] text-atlas-gray3 mb-1">{label}</div>
       )}

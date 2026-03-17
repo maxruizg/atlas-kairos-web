@@ -13,15 +13,21 @@ export function irrColor(irr: number): string {
   return "text-atlas-red";
 }
 
-export function irrColorHex(irr: number): string {
+export function irrColorHex(irr: number, theme: "dark" | "light" = "dark"): string {
+  if (theme === "light") {
+    if (irr > 15) return "#059669";
+    if (irr > 5) return "#111111";
+    if (irr > 0) return "#D97706";
+    return "#DC2626";
+  }
   if (irr > 15) return "#00E5A0";
   if (irr > 5) return "#E8E8F2";
   if (irr > 0) return "#FFB347";
   return "#FF5C5C";
 }
 
-export function formatIrr(irr: number): string {
-  return `${irr > 0 ? "+" : ""}${irr}%`;
+export function formatIrr(irr: number, decimals = 1): string {
+  return `${irr > 0 ? "+" : ""}${irr.toFixed(decimals)}%`;
 }
 
 export function formatPercent(v: number): string {
@@ -35,7 +41,13 @@ export function moicColor(v: number): string {
   return "text-atlas-red";
 }
 
-export function moicColorHex(v: number): string {
+export function moicColorHex(v: number, theme: "dark" | "light" = "dark"): string {
+  if (theme === "light") {
+    if (v >= 2) return "#059669";
+    if (v >= 1.5) return "#6C5CC0";
+    if (v >= 1) return "#111111";
+    return "#DC2626";
+  }
   if (v >= 2) return "#00E5A0";
   if (v >= 1.5) return "#B4A8EC";
   if (v >= 1) return "#E8E8F2";

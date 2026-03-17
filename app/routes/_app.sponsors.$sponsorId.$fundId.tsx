@@ -7,6 +7,7 @@ import { SponsorBadge } from "~/components/ui/SponsorBadge";
 import { MiniDonut } from "~/components/charts/MiniDonut";
 import { CashflowChart } from "~/components/charts/CashflowChart";
 import { NavHistoryChart } from "~/components/charts/NavHistoryChart";
+import { useT } from "~/lib/use-t";
 
 export async function loader({ params }: { params: { sponsorId: string; fundId: string } }) {
   const [fund, sponsor] = await Promise.all([
@@ -24,6 +25,8 @@ export default function FundDetail() {
     sponsor: Sponsor;
   }>();
   const [tab, setTab] = useState<Tab>("companies");
+  const t = useT();
+  const fd = t.fundDetail;
 
   // Theme donut data from companies
   const themeData = useMemo(() => {
@@ -40,18 +43,23 @@ export default function FundDetail() {
   }, [fund.cashflows]);
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: "companies", label: `Companies (${fund.companies.length})` },
-    { key: "cashflows", label: "Cash Flows" },
-    { key: "nav", label: "NAV History" },
-    { key: "documents", label: "Documents" },
+    { key: "companies", label: fd.companiesTab(fund.companies.length) },
+    { key: "cashflows", label: fd.cashFlows },
+    { key: "nav", label: fd.navHistory },
+    { key: "documents", label: fd.documents },
   ];
+
+  const companyHeaders = [fd.colCompany, fd.colTheme, fd.colInvested, fd.colFmv, fd.colMoic, fd.colIrr, fd.colStatus, fd.colOwn];
+  const companyLeftAlign = [fd.colCompany, fd.colTheme, fd.colStatus];
+  const txHeaders = [fd.colDate, fd.colType, fd.colAmount, fd.colRunningBalance, fd.colNote];
+  const txLeftAlign = [fd.colDate, fd.colType, fd.colNote];
 
   return (
     <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-xs">
         <Link to="/sponsors" className="text-atlas-gray3 hover:text-atlas-purple no-underline">
-          Sponsors
+          {t.sidebar.sponsors}
         </Link>
         <span className="text-atlas-gray4">/</span>
         <Link
@@ -81,22 +89,22 @@ export default function FundDetail() {
       {/* 10 KPI Metrics */}
       <div className="grid grid-cols-10 gap-2">
         {[
-          { label: "Gross IRR", value: formatIrr(fund.gross_irr), color: irrColor(fund.gross_irr) },
-          { label: "Net IRR", value: formatIrr(fund.net_irr), color: irrColor(fund.net_irr) },
-          { label: "Gross MOIC", value: formatMultiplier(fund.gross_moic), color: moicColor(fund.gross_moic) },
-          { label: "Net MOIC", value: formatMultiplier(fund.net_moic), color: moicColor(fund.net_moic) },
-          { label: "TVPI", value: formatMultiplier(fund.tvpi), color: "text-atlas-purple" },
-          { label: "DPI", value: formatMultiplier(fund.dpi), color: "text-atlas-gray1" },
-          { label: "RVPI", value: formatMultiplier(fund.rvpi), color: "text-atlas-gray1" },
-          { label: "NAV", value: formatCurrency(fund.nav), color: "text-atlas-white" },
-          { label: "Paid-In", value: formatCurrency(fund.paid_in), color: "text-atlas-white" },
-          { label: "Unfunded", value: formatCurrency(fund.unfunded), color: "text-atlas-orange" },
+          { label: fd.grossIrr, value: formatIrr(fund.gross_irr), color: irrColor(fund.gross_irr), title: formatIrr(fund.gross_irr, 4) },
+          { label: fd.netIrr, value: formatIrr(fund.net_irr), color: irrColor(fund.net_irr), title: formatIrr(fund.net_irr, 4) },
+          { label: fd.grossMoic, value: formatMultiplier(fund.gross_moic), color: moicColor(fund.gross_moic) },
+          { label: fd.netMoic, value: formatMultiplier(fund.net_moic), color: moicColor(fund.net_moic) },
+          { label: fd.tvpi, value: formatMultiplier(fund.tvpi), color: "text-atlas-purple", title: undefined as string | undefined },
+          { label: fd.dpi, value: formatMultiplier(fund.dpi), color: "text-atlas-gray1" },
+          { label: fd.rvpi, value: formatMultiplier(fund.rvpi), color: "text-atlas-gray1" },
+          { label: fd.nav, value: formatCurrency(fund.nav), color: "text-atlas-white" },
+          { label: fd.paidIn, value: formatCurrency(fund.paid_in), color: "text-atlas-white" },
+          { label: fd.unfunded, value: formatCurrency(fund.unfunded), color: "text-atlas-orange" },
         ].map((kpi) => (
           <div key={kpi.label} className="bg-atlas-card border border-atlas-border rounded-xl px-3 py-3">
             <div className="text-[9px] text-atlas-gray3 uppercase tracking-widest mb-1">
               {kpi.label}
             </div>
-            <div className={`text-[16px] font-bold font-mono ${kpi.color}`}>
+            <div className={`text-[16px] font-bold font-mono ${kpi.color}`} title={kpi.title}>
               {kpi.value}
             </div>
           </div>
@@ -105,17 +113,17 @@ export default function FundDetail() {
 
       {/* Tabs */}
       <div className="flex gap-2">
-        {tabs.map((t) => (
+        {tabs.map((tb) => (
           <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
+            key={tb.key}
+            onClick={() => setTab(tb.key)}
             className={`px-3 py-[5px] rounded-full border text-xs font-semibold cursor-pointer transition-colors ${
-              tab === t.key
+              tab === tb.key
                 ? "border-atlas-purple bg-atlas-purple-dim text-atlas-purple"
                 : "border-atlas-border bg-transparent text-atlas-gray3 hover:border-atlas-gray4"
             }`}
           >
-            {t.label}
+            {tb.label}
           </button>
         ))}
       </div>
@@ -128,20 +136,18 @@ export default function FundDetail() {
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-atlas-surface">
-                  {["Company", "Theme", "Invested", "FMV", "MOIC", "IRR", "Status", "Own"].map(
-                    (h) => (
-                      <th
-                        key={h}
-                        className={`py-[9px] px-3.5 text-[10px] font-semibold text-atlas-gray4 uppercase tracking-wider ${
-                          ["Company", "Theme", "Status"].includes(h)
-                            ? "text-left"
-                            : "text-right"
-                        }`}
-                      >
-                        {h}
-                      </th>
-                    )
-                  )}
+                  {companyHeaders.map((h) => (
+                    <th
+                      key={h}
+                      className={`py-[9px] px-3.5 text-[10px] font-semibold text-atlas-gray4 uppercase tracking-wider ${
+                        companyLeftAlign.includes(h)
+                          ? "text-left"
+                          : "text-right"
+                      }`}
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -163,7 +169,10 @@ export default function FundDetail() {
                     <td className={`py-3 px-3.5 text-right text-[12px] font-bold font-mono ${moicColor(c.moic)}`}>
                       {formatMultiplier(c.moic)}
                     </td>
-                    <td className={`py-3 px-3.5 text-right text-[12px] font-bold font-mono ${irrColor(c.irr)}`}>
+                    <td
+                      className={`py-3 px-3.5 text-right text-[12px] font-bold font-mono ${irrColor(c.irr)}`}
+                      title={formatIrr(c.irr, 4)}
+                    >
                       {formatIrr(c.irr)}
                     </td>
                     <td className="py-3 px-3.5">
@@ -181,20 +190,20 @@ export default function FundDetail() {
           </div>
 
           {/* Theme Donut Sidebar */}
-          <MiniDonut data={themeData} title="By Theme" />
+          <MiniDonut data={themeData} title={fd.byTheme} />
         </div>
       )}
 
       {tab === "cashflows" && (
         <div className="flex flex-col gap-4">
           <div className="bg-atlas-card border border-atlas-border rounded-[14px] p-5">
-            <div className="text-sm font-semibold text-atlas-white mb-4">Capital Activity</div>
+            <div className="text-sm font-semibold text-atlas-white mb-4">{fd.capitalActivity}</div>
             <CashflowChart data={fund.cashflows} />
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div className="bg-atlas-card border border-atlas-border rounded-xl px-5 py-4">
               <div className="text-[10px] text-atlas-gray3 uppercase tracking-widest mb-1">
-                Total Calls
+                {fd.totalCalls}
               </div>
               <div className="text-[18px] font-bold text-atlas-purple font-mono">
                 {formatCurrency(cfSummary.totalCalls)}
@@ -202,7 +211,7 @@ export default function FundDetail() {
             </div>
             <div className="bg-atlas-card border border-atlas-border rounded-xl px-5 py-4">
               <div className="text-[10px] text-atlas-gray3 uppercase tracking-widest mb-1">
-                Total Distributions
+                {fd.totalDistributions}
               </div>
               <div className="text-[18px] font-bold text-atlas-green font-mono">
                 {formatCurrency(cfSummary.totalDist)}
@@ -210,7 +219,7 @@ export default function FundDetail() {
             </div>
             <div className="bg-atlas-card border border-atlas-border rounded-xl px-5 py-4">
               <div className="text-[10px] text-atlas-gray3 uppercase tracking-widest mb-1">
-                Net Cash Flow
+                {fd.netCashFlow}
               </div>
               <div
                 className={`text-[18px] font-bold font-mono ${
@@ -222,21 +231,102 @@ export default function FundDetail() {
               </div>
             </div>
           </div>
+
+          {/* Transaction Ledger */}
+          {fund.transactions && fund.transactions.length > 0 && (
+            <div className="bg-atlas-card border border-atlas-border rounded-[14px]">
+              <div className="px-5 py-3.5 border-b border-atlas-border text-sm font-semibold text-atlas-white">
+                {fd.transactionLedger}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-atlas-surface">
+                      {txHeaders.map((h) => (
+                        <th
+                          key={h}
+                          className={`py-[9px] px-3.5 text-[10px] font-semibold text-atlas-gray4 uppercase tracking-wider whitespace-nowrap ${
+                            txLeftAlign.includes(h) ? "text-left" : "text-right"
+                          }`}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const sorted = [...fund.transactions].sort(
+                        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+                      );
+                      let balance = 0;
+                      return sorted.map((tx, i) => {
+                        balance += tx.amount;
+                        const isCall = tx.tx_type === "Capital Call";
+                        return (
+                          <tr
+                            key={i}
+                            className="border-t border-atlas-border hover:bg-atlas-card-hover transition-colors"
+                          >
+                            <td className="py-3 px-3.5 text-[11px] font-mono text-atlas-gray2 whitespace-nowrap">
+                              {tx.date}
+                            </td>
+                            <td className="py-3 px-3.5">
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded font-semibold ${
+                                  isCall
+                                    ? "bg-atlas-red-dim text-atlas-red"
+                                    : "bg-atlas-green-dim text-atlas-green"
+                                }`}
+                              >
+                                {tx.tx_type}
+                              </span>
+                            </td>
+                            <td
+                              className={`py-3 px-3.5 text-right text-[12px] font-bold font-mono ${
+                                isCall ? "text-atlas-red" : "text-atlas-green"
+                              }`}
+                            >
+                              {isCall
+                                ? `(${formatCurrency(Math.abs(tx.amount))})`
+                                : `+${formatCurrency(tx.amount)}`}
+                            </td>
+                            <td
+                              className={`py-3 px-3.5 text-right text-[12px] font-mono font-semibold ${
+                                balance < 0 ? "text-atlas-red" : "text-atlas-green"
+                              }`}
+                            >
+                              {balance < 0
+                                ? `(${formatCurrency(Math.abs(balance))})`
+                                : formatCurrency(balance)}
+                            </td>
+                            <td className="py-3 px-3.5 text-[11px] text-atlas-gray3">
+                              {tx.note}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {tab === "nav" && (
         <div className="bg-atlas-card border border-atlas-border rounded-[14px] p-5">
-          <div className="text-sm font-semibold text-atlas-white mb-4">NAV History</div>
+          <div className="text-sm font-semibold text-atlas-white mb-4">{fd.navHistoryTitle}</div>
           <NavHistoryChart data={fund.nav_history} />
         </div>
       )}
 
       {tab === "documents" && (
         <div className="bg-atlas-card border border-atlas-border rounded-[14px] p-5">
-          <div className="text-sm font-semibold text-atlas-white mb-4">Fund Documents</div>
+          <div className="text-sm font-semibold text-atlas-white mb-4">{fd.fundDocuments}</div>
           <div className="text-[13px] text-atlas-gray3">
-            Document filtering by fund coming soon.
+            {fd.documentsComingSoon}
           </div>
         </div>
       )}

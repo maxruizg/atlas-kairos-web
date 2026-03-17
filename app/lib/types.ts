@@ -120,6 +120,9 @@ export interface Fund {
   gross_moic: number;
   net_moic: number;
   pct_called: number;
+  latest_report_q: string;
+  report_received: boolean;
+  transactions: Transaction[];
   companies: PortfolioCompany[];
   nav_history: NavPoint[];
   cashflows: CashflowPoint[];
@@ -128,6 +131,7 @@ export interface Fund {
 export interface PortfolioCompany {
   name: string;
   theme: string;
+  stage: string | null;
   date: string;
   status: string;
   invested: number;
@@ -146,4 +150,11 @@ export interface CashflowPoint {
   q: string;
   calls: number;
   dist: number;
+}
+
+export interface Transaction {
+  date: string;
+  tx_type: string;
+  amount: number;
+  note: string;
 }

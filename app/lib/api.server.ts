@@ -74,4 +74,18 @@ export const api = {
     return fetchApi<Fund[]>(`/funds${qs ? `?${qs}` : ""}`);
   },
   getFund: (id: string) => fetchApi<Fund>(`/funds/${id}`),
+
+  // Auth
+  login: (email: string, password: string) =>
+    fetchApi<{ success: boolean; token: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  signup: (name: string, email: string, password: string, confirmPassword: string) =>
+    fetchApi<{ success: boolean; token: string }>("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ name, email, password, confirm_password: confirmPassword }),
+    }),
+  logout: () =>
+    fetchApi<{ success: boolean }>("/auth/logout", { method: "POST" }),
 };

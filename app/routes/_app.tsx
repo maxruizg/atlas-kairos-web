@@ -1,11 +1,20 @@
-import { Outlet, isRouteErrorResponse, useLoaderData } from "react-router";
+import { Outlet, isRouteErrorResponse, useLoaderData, redirect } from "react-router";
 import { Sidebar } from "~/components/layout/Sidebar";
 import { TopBar } from "~/components/layout/TopBar";
 import { EntityProvider, getEntityFromRequest } from "~/lib/entity-context";
+import { ThemeProvider, getThemeFromRequest } from "~/lib/theme-context";
+import { LangProvider, getLangFromRequest } from "~/lib/lang-context";
+import { AuthProvider, getSessionFromRequest } from "~/lib/auth-context";
+import { useT } from "~/lib/use-t";
 import { api } from "~/lib/api.server";
 import type { Entity } from "~/lib/types";
 
 export async function loader({ request }: { request: Request }) {
+  const session = getSessionFromRequest(request);
+  if (!session) {
+    throw redirect("/login");
+  }
+
   let entities: Entity[] = [];
   try {
     entities = await api.getEntities();
@@ -13,16 +22,23 @@ export async function loader({ request }: { request: Request }) {
     // Backend may not be running — degrade gracefully
   }
   const selectedEntityId = getEntityFromRequest(request);
-  return { entities, selectedEntityId };
+  const theme = getThemeFromRequest(request);
+  const lang = getLangFromRequest(request);
+  return { entities, selectedEntityId, theme, lang };
 }
 
 export default function AppLayout() {
-  const { entities, selectedEntityId } = useLoaderData<{
+  const { entities, selectedEntityId, theme, lang } = useLoaderData<{
     entities: Entity[];
     selectedEntityId: string | null;
+    theme: "dark" | "light";
+    lang: "en" | "es";
   }>();
 
   return (
+    <AuthProvider isAuthenticated={true}>
+    <ThemeProvider theme={theme}>
+    <LangProvider lang={lang}>
     <EntityProvider entities={entities} selectedEntityId={selectedEntityId}>
       <div className="w-full h-screen flex flex-col overflow-hidden">
         <TopBar />
@@ -30,13 +46,23 @@ export default function AppLayout() {
           <Sidebar />
           <Outlet />
         </div>
-        <div className="h-7 bg-atlas-surface border-t border-atlas-border flex items-center justify-center gap-2 text-[10px] text-atlas-gray3 shrink-0">
-          <span>Atlas by</span>
-          <span className="text-atlas-purple font-semibold">[KAIROS]</span>
-          <span>&middot; v1.0 &middot; Confidential</span>
-        </div>
+        <Footer />
       </div>
     </EntityProvider>
+    </LangProvider>
+    </ThemeProvider>
+    </AuthProvider>
+  );
+}
+
+function Footer() {
+  const t = useT();
+  return (
+    <div className="h-7 bg-atlas-surface border-t border-atlas-border flex items-center justify-center gap-2 text-[10px] text-atlas-gray3 shrink-0">
+      <span>{t.footer.atlasBy}</span>
+      <span className="text-atlas-purple font-semibold">[KAIROS]</span>
+      <span>&middot; v1.0 &middot; {t.footer.confidential}</span>
+    </div>
   );
 }
 

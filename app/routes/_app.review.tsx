@@ -3,6 +3,7 @@ import { api } from "~/lib/api.server";
 import type { ReviewDocument, ReviewField } from "~/lib/types";
 import { FieldCard } from "~/components/ui/FieldCard";
 import { ProgressBar } from "~/components/ui/ProgressBar";
+import { useT } from "~/lib/use-t";
 
 export async function loader() {
   const review = await api.getReview("doc-001");
@@ -21,6 +22,8 @@ export async function action({ request }: { request: Request }) {
 export default function Review() {
   const { review } = useLoaderData<{ review: ReviewDocument }>();
   const fetcher = useFetcher();
+  const t = useT();
+  const tr = t.review;
 
   // Optimistic: merge pending submissions
   const fields = review.fields.map((f) => {
@@ -46,7 +49,7 @@ export default function Review() {
     <div className="flex-1 flex overflow-hidden">
       {/* Left: Document Preview */}
       <div className="w-[340px] border-r border-atlas-border bg-atlas-surface p-6 flex flex-col gap-3.5 overflow-auto">
-        <div className="text-[13px] font-semibold text-atlas-white mb-1">Document Preview</div>
+        <div className="text-[13px] font-semibold text-atlas-white mb-1">{tr.documentPreview}</div>
         <div className="bg-atlas-card border border-atlas-border rounded-[10px] p-4">
           <div className="text-[11px] text-atlas-gray4 mb-2 uppercase tracking-widest">
             {review.fund}
@@ -54,7 +57,7 @@ export default function Review() {
           <div className="text-[13px] font-bold text-atlas-white mb-3">{review.doc_type}</div>
           <div className="h-px bg-atlas-border mb-3" />
           <div className="text-[11px] text-atlas-gray3 mb-1">
-            Period Ending:{" "}
+            {tr.periodEnding}{" "}
             <strong className="text-atlas-white">
               {fields.find((f) => f.key === "Period End")?.value || "\u2014"}
             </strong>
@@ -79,15 +82,15 @@ export default function Review() {
           {/* Low confidence highlight */}
           <div className="mt-4 border border-atlas-orange rounded-md p-2 bg-atlas-orange-dim">
             <div className="text-[10px] text-atlas-orange font-bold">
-              &#x26A0; Low confidence field
+              {tr.lowConfidence}
             </div>
             <div className="text-[10px] text-atlas-gray2 mt-0.5">
-              Management Fees on page 4 &mdash; please verify value of $124,000
+              {tr.lowConfidenceDetail}
             </div>
           </div>
         </div>
         <div className="text-[10px] text-atlas-gray4">
-          Page 1 of 6 &middot; Confidence: <span className="font-mono">{review.confidence}%</span>
+          {tr.pageOf(1, 6)} &middot; {tr.confidence} <span className="font-mono">{review.confidence}%</span>
         </div>
       </div>
 
@@ -96,17 +99,17 @@ export default function Review() {
         {/* Header */}
         <div className="flex justify-between items-start">
           <div>
-            <h2 className="text-lg font-bold text-atlas-white font-display">REVIEW EXTRACTION</h2>
+            <h2 className="text-lg font-bold text-atlas-white font-display">{tr.title}</h2>
             <p className="text-xs text-atlas-gray3 mt-0.5">
               {review.name} &middot; {review.doc_type}
             </p>
           </div>
           <div className="flex gap-2">
             <button className="px-4 py-2 rounded-lg border border-atlas-border bg-transparent text-atlas-gray2 text-xs cursor-pointer">
-              Reject
+              {tr.reject}
             </button>
             <button className="px-4 py-2 rounded-lg border-none bg-atlas-green text-atlas-white text-xs cursor-pointer font-semibold">
-              Approve &amp; Post to Ledger
+              {tr.approvePost}
             </button>
           </div>
         </div>
@@ -115,9 +118,9 @@ export default function Review() {
         <div className="bg-atlas-card border border-atlas-border rounded-[10px] px-4 py-3 flex gap-6 items-center">
           <div className="flex-1">
             <div className="flex justify-between mb-[5px]">
-              <span className="text-[11px] text-atlas-gray3">Review Progress</span>
+              <span className="text-[11px] text-atlas-gray3">{tr.reviewProgress}</span>
               <span className="text-[11px] font-bold text-atlas-white font-mono">
-                {reviewed}/{fields.length} fields reviewed
+                {tr.fieldsReviewed(reviewed, fields.length)}
               </span>
             </div>
             <ProgressBar value={reviewed} max={fields.length} />
@@ -125,11 +128,11 @@ export default function Review() {
           <div className="flex gap-3">
             <div className="text-center">
               <div className="text-base font-bold text-atlas-green font-mono">{approvedCount}</div>
-              <div className="text-[10px] text-atlas-gray4">Approved</div>
+              <div className="text-[10px] text-atlas-gray4">{tr.approvedLabel}</div>
             </div>
             <div className="text-center">
               <div className="text-base font-bold text-atlas-orange font-mono">{pendingCount}</div>
-              <div className="text-[10px] text-atlas-gray4">Pending</div>
+              <div className="text-[10px] text-atlas-gray4">{tr.pending}</div>
             </div>
           </div>
         </div>

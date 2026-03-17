@@ -10,6 +10,7 @@ import { UploadModal } from "~/components/ui/UploadModal";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
 import { MiniDonut } from "~/components/charts/MiniDonut";
 import { ExposureChart } from "~/components/charts/ExposureChart";
+import { useT } from "~/lib/use-t";
 
 export async function loader({ request }: { request: Request }) {
   const entityId = getEntityFromRequest(request) || undefined;
@@ -31,6 +32,7 @@ export default function Dashboard() {
   }>();
   const [showUpload, setShowUpload] = useState(false);
   const fetcher = useFetcher();
+  const t = useT();
 
   // Build sponsor lookup
   const sponsorMap = useMemo(() => {
@@ -91,69 +93,102 @@ export default function Dashboard() {
       .map(([name, value]) => ({ name, value }));
   }, [funds]);
 
-  // Exposure dimensions
-  const exposureData = useMemo(() => {
-    const byDim = (key: (f: Fund) => string) => {
-      const map: Record<string, number> = {};
-      for (const f of funds) {
-        const k = key(f);
-        map[k] = (map[k] || 0) + f.nav;
-      }
-      return Object.entries(map)
-        .sort((a, b) => b[1] - a[1])
-        .map(([name, value]) => ({ name, value }));
-    };
-
-    const themeMap: Record<string, number> = {};
-    for (const f of funds)
-      for (const c of f.companies) themeMap[c.theme] = (themeMap[c.theme] || 0) + c.fmv;
-
-    return {
-      Theme: Object.entries(themeMap)
-        .sort((a, b) => b[1] - a[1])
-        .map(([name, value]) => ({ name, value })),
-      Geography: byDim((f) => f.geography),
-      "Asset Class": byDim((f) => f.asset_class),
-      Strategy: byDim((f) => f.strategy),
-    } as Record<"Theme" | "Geography" | "Asset Class" | "Strategy", { name: string; value: number }[]>;
-  }, [funds]);
+  const td = t.dashboard;
+  const tableHeaders = [
+    td.colSponsor, td.colInvestment, td.colClass, td.colStrategy, td.colGeo,
+    td.colNav, td.colPctPort, td.colPctAsset,
+    td.colGrossIrr, td.colNetIrr, td.colTvpi, td.colDpi, td.colRvpi,
+    td.colPaidIn, td.colPctCalled, td.colReport,
+  ];
+  const leftAlignHeaders = [td.colSponsor, td.colInvestment, td.colClass, td.colStrategy, td.colGeo];
 
   return (
     <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-6">
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-[22px] font-bold text-atlas-white font-display">Portfolio Overview</h1>
+          <h1 className="text-[22px] font-bold text-atlas-white font-display">{td.title}</h1>
           <p className="text-[13px] text-atlas-gray3 mt-0.5">
-            As of March 5, 2026 &middot; {funds.length} funds &middot; Paid-in weighted
+            {td.subtitle(funds.length)}
           </p>
         </div>
         <div className="flex gap-2">
           <button className="px-3.5 py-[7px] rounded-lg border border-atlas-border bg-transparent text-atlas-gray2 text-xs cursor-pointer font-medium">
-            Export CSV
+            {td.exportCsv}
           </button>
           <button
             onClick={() => setShowUpload(true)}
             className="px-3.5 py-[7px] rounded-lg border-none bg-atlas-purple text-atlas-white text-xs cursor-pointer font-semibold"
           >
-            + Add Document
+            {td.addDocument}
           </button>
+        </div>
+      </div>
+
+      {/* Report Alert Banner */}
+      {funds.some((f) => !f.report_received) && (
+        <div className="bg-atlas-orange-dim border border-atlas-orange/20 rounded-[10px] px-4 py-2.5 flex gap-2.5 items-center">
+          <span className="text-atlas-orange text-base">&#x26A0;</span>
+          <span className="text-xs text-atlas-gray2">
+            <strong className="text-atlas-orange">
+              {td.fundsMissingReport(funds.filter((f) => !f.report_received).length)}
+            </strong>{" "}
+            {td.missingQ4}
+          </span>
+        </div>
+      )}
+
+      {/* Report Delivery Status */}
+      <div className="bg-atlas-card border border-atlas-border rounded-[14px] p-5">
+        <div className="text-sm font-semibold text-atlas-white mb-3">
+          {td.reportDelivery}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {funds.map((f) => {
+            const sp = sponsorMap[f.sponsor_id];
+            const shortName = f.name.split(" ").slice(0, 3).join(" ");
+            return (
+              <div
+                key={f.id}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-atlas-border bg-atlas-surface"
+              >
+                {sp && (
+                  <div
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0"
+                    style={{ background: sp.color }}
+                  >
+                    {sp.initials}
+                  </div>
+                )}
+                <span className="text-[11px] text-atlas-gray2 font-medium">{shortName}</span>
+                {f.report_received ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-atlas-green-dim text-atlas-green font-semibold">
+                    {td.onTime}
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-atlas-orange-dim text-atlas-orange font-semibold">
+                    {td.missing}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* 10 KPIs */}
       <div className="grid grid-cols-10 gap-2">
         {[
-          { label: "Gross IRR", value: `${agg.grossIrr.toFixed(1)}%`, color: irrColor(agg.grossIrr) },
-          { label: "Net IRR", value: `${agg.netIrr.toFixed(1)}%`, color: irrColor(agg.netIrr) },
-          { label: "Gross MOIC", value: formatMultiplier(agg.grossMoic), color: moicColor(agg.grossMoic) },
-          { label: "Net MOIC", value: formatMultiplier(agg.netMoic), color: moicColor(agg.netMoic) },
-          { label: "TVPI", value: formatMultiplier(agg.tvpi), color: "text-atlas-purple" },
-          { label: "DPI", value: formatMultiplier(agg.dpi), color: "text-atlas-gray1" },
-          { label: "RVPI", value: formatMultiplier(agg.rvpi), color: "text-atlas-gray1" },
-          { label: "Total NAV", value: formatCurrency(agg.totalNav), color: "text-atlas-white" },
-          { label: "Paid-In", value: formatCurrency(agg.totalPaidIn), color: "text-atlas-white" },
-          { label: "Unfunded", value: formatCurrency(agg.totalUnfunded), color: "text-atlas-orange" },
+          { label: td.grossIrr, value: `${agg.grossIrr.toFixed(1)}%`, color: irrColor(agg.grossIrr) },
+          { label: td.netIrr, value: `${agg.netIrr.toFixed(1)}%`, color: irrColor(agg.netIrr) },
+          { label: td.grossMoic, value: formatMultiplier(agg.grossMoic), color: moicColor(agg.grossMoic) },
+          { label: td.netMoic, value: formatMultiplier(agg.netMoic), color: moicColor(agg.netMoic) },
+          { label: td.tvpi, value: formatMultiplier(agg.tvpi), color: "text-atlas-purple" },
+          { label: td.dpi, value: formatMultiplier(agg.dpi), color: "text-atlas-gray1" },
+          { label: td.rvpi, value: formatMultiplier(agg.rvpi), color: "text-atlas-gray1" },
+          { label: td.totalNav, value: formatCurrency(agg.totalNav), color: "text-atlas-white" },
+          { label: td.paidIn, value: formatCurrency(agg.totalPaidIn), color: "text-atlas-white" },
+          { label: td.unfunded, value: formatCurrency(agg.totalUnfunded), color: "text-atlas-orange" },
         ].map((kpi) => (
           <div key={kpi.label} className="bg-atlas-card border border-atlas-border rounded-xl px-3 py-3">
             <div className="text-[9px] text-atlas-gray3 uppercase tracking-widest mb-1">
@@ -168,33 +203,28 @@ export default function Dashboard() {
 
       {/* 3 Donut charts */}
       <div className="grid grid-cols-3 gap-4">
-        <MiniDonut data={geoData} title="By Geography" />
-        <MiniDonut data={assetData} title="By Asset Class" />
-        <MiniDonut data={themeData} title="Top Themes" />
+        <MiniDonut data={geoData} title={td.byGeography} />
+        <MiniDonut data={assetData} title={td.byAssetClass} />
+        <MiniDonut data={themeData} title={td.topThemes} />
       </div>
 
       {/* Exposure Analysis */}
-      <ExposureChart dataByDimension={exposureData} />
+      <ExposureChart funds={funds} />
 
       {/* Investment Table */}
       <div className="bg-atlas-card border border-atlas-border rounded-[14px]">
         <div className="px-5 py-4 border-b border-atlas-border">
-          <div className="text-sm font-semibold text-atlas-white">Investments</div>
+          <div className="text-sm font-semibold text-atlas-white">{td.investments}</div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse min-w-[1200px]">
             <thead>
               <tr className="bg-atlas-surface">
-                {[
-                  "Sponsor", "Investment", "Class", "Strategy", "Geo",
-                  "NAV", "% Port", "% Asset",
-                  "Gross IRR", "Net IRR", "TVPI", "DPI", "RVPI",
-                  "Paid-In", "% Called",
-                ].map((h) => (
+                {tableHeaders.map((h) => (
                   <th
                     key={h}
                     className={`py-[9px] px-3 text-[10px] font-semibold text-atlas-gray4 uppercase tracking-wider whitespace-nowrap ${
-                      ["Sponsor", "Investment", "Class", "Strategy", "Geo"].includes(h)
+                      leftAlignHeaders.includes(h)
                         ? "text-left"
                         : "text-right"
                     }`}
@@ -241,10 +271,10 @@ export default function Dashboard() {
                     <td className="py-3 px-3 text-right text-[11px] text-atlas-gray2 font-mono">
                       {pctAsset.toFixed(1)}%
                     </td>
-                    <td className={`py-3 px-3 text-right text-[12px] font-bold font-mono ${irrColor(f.gross_irr)}`}>
+                    <td className={`py-3 px-3 text-right text-[12px] font-bold font-mono ${irrColor(f.gross_irr)}`} title={formatIrr(f.gross_irr, 4)}>
                       {formatIrr(f.gross_irr)}
                     </td>
-                    <td className={`py-3 px-3 text-right text-[12px] font-bold font-mono ${irrColor(f.net_irr)}`}>
+                    <td className={`py-3 px-3 text-right text-[12px] font-bold font-mono ${irrColor(f.net_irr)}`} title={formatIrr(f.net_irr, 4)}>
                       {formatIrr(f.net_irr)}
                     </td>
                     <td className="py-3 px-3 text-right text-[12px] font-bold text-atlas-purple font-mono">
@@ -271,6 +301,17 @@ export default function Dashboard() {
                           />
                         </div>
                       </div>
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      {f.report_received ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-atlas-green-dim text-atlas-green font-semibold whitespace-nowrap">
+                          {td.onTime}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-atlas-orange-dim text-atlas-orange font-semibold whitespace-nowrap">
+                          {td.missing}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );

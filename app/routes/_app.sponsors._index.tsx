@@ -5,6 +5,7 @@ import { getEntityFromRequest } from "~/lib/entity-context";
 import type { Sponsor } from "~/lib/types";
 import { formatCurrency, formatMultiplier, formatIrr, irrColor } from "~/lib/utils";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
+import { useT } from "~/lib/use-t";
 
 export async function loader({ request }: { request: Request }) {
   const entityId = getEntityFromRequest(request) || undefined;
@@ -17,6 +18,7 @@ export default function SponsorsIndex() {
   const [search, setSearch] = useState("");
   const [filterAsset, setFilterAsset] = useState<string>("All");
   const [filterGeo, setFilterGeo] = useState<string>("All");
+  const t = useT();
 
   // Collect unique asset classes and geographies
   const allAssets = useMemo(() => {
@@ -37,9 +39,9 @@ export default function SponsorsIndex() {
     <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-6">
       {/* Header */}
       <div>
-        <h1 className="text-[22px] font-bold text-atlas-white font-display">Sponsors</h1>
+        <h1 className="text-[22px] font-bold text-atlas-white font-display">{t.sponsors.title}</h1>
         <p className="text-[13px] text-atlas-gray3 mt-0.5">
-          {sponsors.length} sponsor relationships &middot; {sponsors.reduce((s, sp) => s + sp.fund_count, 0)} funds
+          {t.sponsors.subtitle(sponsors.length, sponsors.reduce((s, sp) => s + sp.fund_count, 0))}
         </p>
       </div>
 
@@ -48,7 +50,7 @@ export default function SponsorsIndex() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search sponsors\u2026"
+          placeholder={t.sponsors.searchPlaceholder}
           className="bg-atlas-card border border-atlas-border rounded-lg px-3 py-2 text-sm text-atlas-white outline-none placeholder:text-atlas-gray4 focus:border-atlas-purple transition-colors w-64"
         />
         <select
@@ -58,7 +60,7 @@ export default function SponsorsIndex() {
         >
           {allAssets.map((a) => (
             <option key={a} value={a}>
-              {a === "All" ? "All Asset Classes" : a}
+              {a === "All" ? t.sponsors.allAssetClasses : a}
             </option>
           ))}
         </select>
@@ -93,20 +95,23 @@ export default function SponsorsIndex() {
             </div>
             <div className="grid grid-cols-4 gap-3">
               <div>
-                <div className="text-[9px] text-atlas-gray3 uppercase tracking-widest mb-0.5">Funds</div>
+                <div className="text-[9px] text-atlas-gray3 uppercase tracking-widest mb-0.5">{t.sponsors.funds}</div>
                 <div className="text-sm font-bold text-atlas-white font-mono">{s.fund_count}</div>
               </div>
               <div>
-                <div className="text-[9px] text-atlas-gray3 uppercase tracking-widest mb-0.5">Total NAV</div>
+                <div className="text-[9px] text-atlas-gray3 uppercase tracking-widest mb-0.5">{t.sponsors.totalNav}</div>
                 <div className="text-sm font-bold text-atlas-white font-mono">{formatCurrency(s.total_nav)}</div>
               </div>
               <div>
-                <div className="text-[9px] text-atlas-gray3 uppercase tracking-widest mb-0.5">TVPI</div>
+                <div className="text-[9px] text-atlas-gray3 uppercase tracking-widest mb-0.5">{t.sponsors.tvpi}</div>
                 <div className="text-sm font-bold text-atlas-purple font-mono">{formatMultiplier(s.tvpi)}</div>
               </div>
               <div>
-                <div className="text-[9px] text-atlas-gray3 uppercase tracking-widest mb-0.5">Net IRR</div>
-                <div className={`text-sm font-bold font-mono ${irrColor(s.net_irr)}`}>
+                <div className="text-[9px] text-atlas-gray3 uppercase tracking-widest mb-0.5">{t.sponsors.netIrr}</div>
+                <div
+                  className={`text-sm font-bold font-mono ${irrColor(s.net_irr)}`}
+                  title={formatIrr(s.net_irr, 4)}
+                >
                   {formatIrr(s.net_irr)}
                 </div>
               </div>

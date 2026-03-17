@@ -2,6 +2,7 @@ import { useLoaderData, useFetcher } from "react-router";
 import { useEffect, useRef, useState } from "react";
 import { api } from "~/lib/api.server";
 import type { CopilotMessage, CopilotSuggestion } from "~/lib/types";
+import { useT } from "~/lib/use-t";
 
 export async function loader() {
   const [history, suggestions] = await Promise.all([
@@ -18,7 +19,7 @@ export async function action({ request }: { request: Request }) {
   return result;
 }
 
-export default function Copilot() {
+export default function AtlasAI() {
   const { history, suggestions } = useLoaderData<{
     history: CopilotMessage[];
     suggestions: CopilotSuggestion[];
@@ -26,6 +27,8 @@ export default function Copilot() {
   const fetcher = useFetcher();
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const t = useT();
+  const to = t.oracle;
 
   // Build messages list with optimistic pending
   const messages = [...history];
@@ -55,10 +58,14 @@ export default function Copilot() {
           &#x2726;
         </div>
         <div>
-          <div className="text-[15px] font-bold text-atlas-white font-display">COPILOT</div>
+          <div className="text-[15px] font-bold text-atlas-white font-display">{to.title}</div>
           <div className="text-[11px] text-atlas-gray4">
-            Deterministic Q&amp;A &middot; All answers backed by ledger data and document citations
+            {to.subtitle}
           </div>
+        </div>
+        <div className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-atlas-border">
+          <span className="text-[10px] text-atlas-gray3">{to.poweredBy}</span>
+          <span className="text-[10px] text-atlas-purple font-bold tracking-wide">Claude</span>
         </div>
       </div>
 
@@ -138,7 +145,7 @@ export default function Copilot() {
               {/* Citations */}
               {msg.citations && (
                 <div className="flex flex-wrap gap-[5px]">
-                  <span className="text-[10px] text-atlas-gray4 mr-0.5">Sources:</span>
+                  <span className="text-[10px] text-atlas-gray4 mr-0.5">{to.sources}</span>
                   {msg.citations.map((c, ci) => (
                     <span
                       key={ci}
@@ -174,14 +181,14 @@ export default function Copilot() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-          placeholder="Ask about your portfolio\u2026"
+          placeholder={to.placeholder}
           className="flex-1 bg-atlas-card border border-atlas-border rounded-[10px] px-4 py-[11px] text-[13px] text-atlas-white outline-none font-[inherit] placeholder:text-atlas-gray4 focus:border-atlas-purple transition-colors"
         />
         <button
           onClick={() => handleSubmit()}
           className="px-5 rounded-[10px] border-none bg-atlas-purple text-atlas-white text-[13px] font-semibold cursor-pointer"
         >
-          Ask
+          {to.ask}
         </button>
       </div>
     </div>

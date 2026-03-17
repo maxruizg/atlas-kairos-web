@@ -6,6 +6,7 @@ import type { Document, Sponsor } from "~/lib/types";
 import { StatusBadge } from "~/components/ui/StatusBadge";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
 import { UploadModal } from "~/components/ui/UploadModal";
+import { useT } from "~/lib/use-t";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -20,14 +21,6 @@ export async function loader({ request }: { request: Request }) {
 export async function action({ request }: { request: Request }) {
   return handleUploadAction(request);
 }
-
-const STATUS_FILTERS: [string, string][] = [
-  ["All", "all"],
-  ["Needs Review", "Needs Review"],
-  ["Extracted", "Extracted"],
-  ["Approved", "Approved"],
-  ["Uploaded", "Uploaded"],
-];
 
 const statusColor: Record<string, string> = {
   all: "text-atlas-gray3",
@@ -52,6 +45,8 @@ export default function Vault() {
   const [, setSearchParams] = useSearchParams();
   const [showUpload, setShowUpload] = useState(false);
   const fetcher = useFetcher();
+  const t = useT();
+  const tv = t.vault;
 
   const sponsorMap = useMemo(() => {
     const map: Record<string, Sponsor> = {};
@@ -59,22 +54,41 @@ export default function Vault() {
     return map;
   }, [sponsors]);
 
+  // Status filters with translated labels but English API values
+  const STATUS_FILTERS: [string, string][] = [
+    [tv.all, "all"],
+    [tv.needsReview, "Needs Review"],
+    [tv.extracted, "Extracted"],
+    [tv.approved, "Approved"],
+    [tv.uploaded, "Uploaded"],
+  ];
+
+  // Map API status values to translated labels for matching
+  const statusApiToLabel: Record<string, string> = {
+    "Needs Review": tv.needsReview,
+    Extracted: tv.extracted,
+    Approved: tv.approved,
+    Uploaded: tv.uploaded,
+  };
+
   return (
     <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-6">
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-[22px] font-bold text-atlas-white font-display">Document Vault</h1>
+          <h1 className="text-[22px] font-bold text-atlas-white font-display">{tv.title}</h1>
           <p className="text-[13px] text-atlas-gray3 mt-0.5">
-            {documents.length} documents &middot;{" "}
-            {documents.filter((d) => d.status === "Needs Review").length} pending review
+            {tv.subtitle(
+              documents.length,
+              documents.filter((d) => d.status === "Needs Review").length
+            )}
           </p>
         </div>
         <button
           onClick={() => setShowUpload(true)}
           className="px-[18px] py-[9px] rounded-lg border-none bg-atlas-purple text-atlas-white text-[13px] cursor-pointer font-semibold"
         >
-          Upload Documents
+          {tv.uploadDocuments}
         </button>
       </div>
 
@@ -85,11 +99,10 @@ export default function Vault() {
       >
         <div className="text-[28px] mb-1.5">&oplus;</div>
         <div className="text-[13px] text-atlas-gray2 font-medium">
-          Drag &amp; drop PDFs or XLSX files
+          {tv.dragDrop}
         </div>
         <div className="text-[11px] text-atlas-gray4 mt-[3px]">
-          Supports: Capital Calls &middot; Distributions &middot; Statements &middot; Quarterly
-          Reports
+          {tv.supports}
         </div>
       </div>
 
@@ -100,7 +113,7 @@ export default function Vault() {
           const count =
             value === "all"
               ? documents.length
-              : documents.filter((d) => d.status === label).length;
+              : documents.filter((d) => d.status === value).length;
           return (
             <button
               key={value}
@@ -111,7 +124,7 @@ export default function Vault() {
               }
               className={`px-3 py-[5px] rounded-full bg-atlas-card border flex gap-1.5 items-center text-xs font-semibold cursor-pointer transition-colors ${
                 isActive ? "border-atlas-purple" : "border-atlas-border"
-              } ${statusColor[label] || "text-atlas-gray3"}`}
+              } ${statusColor[value] || "text-atlas-gray3"}`}
             >
               {label}
               <span className="bg-atlas-border rounded-[10px] px-1.5 text-[10px] text-atlas-gray3">
@@ -127,7 +140,7 @@ export default function Vault() {
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-atlas-surface">
-              {["Document", "Type", "Sponsor", "Fund", "Confidence", "Date", "Size", "Status", ""].map(
+              {[tv.colDocument, tv.colType, tv.colSponsor, tv.colFund, tv.colConfidence, tv.colDate, tv.colSize, tv.colStatus, ""].map(
                 (h) => (
                   <th
                     key={h}
@@ -189,7 +202,7 @@ export default function Vault() {
                         to="/review"
                         className="px-2.5 py-1 rounded-md border border-atlas-orange bg-atlas-orange-dim text-atlas-orange text-[11px] font-semibold no-underline"
                       >
-                        Review
+                        {tv.review}
                       </Link>
                     )}
                   </td>

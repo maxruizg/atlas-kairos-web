@@ -1,93 +1,5 @@
 @import "tailwindcss";
 
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/dmsans/v15/rP2tp2ywxg089UriI5-g4vlH9VoD8CmcqZG40F9JadbnoEwAopxhS23PjQ.woff2) format('woff2');
-}
-
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/dmsans/v15/rP2tp2ywxg089UriI5-g4vlH9VoD8CmcqZG40F9JadbnoEwAkJxhS23PjQ.woff2) format('woff2');
-}
-
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/dmsans/v15/rP2tp2ywxg089UriI5-g4vlH9VoD8CmcqZG40F9JadbnoEwAfJthS23PjQ.woff2) format('woff2');
-}
-
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/dmsans/v15/rP2tp2ywxg089UriI5-g4vlH9VoD8CmcqZG40F9JadbnoEwARZthS23PjQ.woff2) format('woff2');
-}
-
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 800;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/dmsans/v15/rP2tp2ywxg089UriI5-g4vlH9VoD8CmcqZG40F9JadbnoEwAopthS23PjQ.woff2) format('woff2');
-}
-
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/ibmplexmono/v19/-F63fjptAgt5VM-kVkqdyU8n5igg1l9kn-s.woff2) format('woff2');
-}
-
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/ibmplexmono/v19/-F6qfjptAgt5VM-kVkqdyU8n3oQIwl1FgsAXHNlY.woff2) format('woff2');
-}
-
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/ibmplexmono/v19/-F6qfjptAgt5VM-kVkqdyU8n3vgOwl1FgsAXHNlY.woff2) format('woff2');
-}
-
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/ibmplexmono/v19/-F6qfjptAgt5VM-kVkqdyU8n3pQPwl1FgsAXHNlY.woff2) format('woff2');
-}
-
-@font-face {
-  font-family: 'Syne';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/syne/v22/8vIS7w4qzmVxsWxjBZRjr0FKM_0KuT6kR47NCV5Z.woff2) format('woff2');
-}
-
-@font-face {
-  font-family: 'Syne';
-  font-style: normal;
-  font-weight: 800;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/syne/v22/8vIS7w4qzmVxsWxjBZRjr0FKM_04uD6kR47NCV5Z.woff2) format('woff2');
-}
-
 @theme {
   --color-atlas-black: #000000;
   --color-atlas-bg: #060608;
@@ -116,10 +28,54 @@
   --color-atlas-off-white: #E8E8F2;
   --color-atlas-gray1: #C0C0D4;
   --color-atlas-gray2: #8080A0;
-  --color-atlas-gray3: #505068;
-  --color-atlas-gray4: #282838;
-  --color-atlas-gray5: #141420;
+  --color-atlas-gray3: #6E6E8A;
+  --color-atlas-gray4: #55556E;
+  --color-atlas-gray5: #1E1E2E;
+  --color-atlas-tooltip-bg: #1A1A28;
   --font-family-sans: 'DM Sans', 'Helvetica Neue', Arial, sans-serif;
   --font-family-mono: 'IBM Plex Mono', 'Menlo', 'Consolas', monospace;
   --font-family-display: 'Syne', 'DM Sans', sans-serif;
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s ease-out;
+}
+
+[data-theme="light"] {
+  --color-atlas-black: #FFFFFF;
+  --color-atlas-bg: #F4F4F8;
+  --color-atlas-surface: #FFFFFF;
+  --color-atlas-card: #FFFFFF;
+  --color-atlas-card-hover: #F8F8FC;
+  --color-atlas-border: #E0E0EA;
+  --color-atlas-border-light: #D0D0DE;
+  --color-atlas-border-bright: #C8C8D6;
+  --color-atlas-purple: #6C5CC0;
+  --color-atlas-purple-light: #8B7BD8;
+  --color-atlas-purple-dim: rgba(108,92,192,0.08);
+  --color-atlas-purple-dim-hover: rgba(108,92,192,0.14);
+  --color-atlas-purple-glow: rgba(108,92,192,0.2);
+  --color-atlas-green: #059669;
+  --color-atlas-green-dim: rgba(5,150,105,0.08);
+  --color-atlas-green-glow: rgba(5,150,105,0.15);
+  --color-atlas-blue: #2563EB;
+  --color-atlas-blue-dim: rgba(37,99,235,0.08);
+  --color-atlas-orange: #D97706;
+  --color-atlas-orange-dim: rgba(217,119,6,0.08);
+  --color-atlas-red: #DC2626;
+  --color-atlas-red-dim: rgba(220,38,38,0.08);
+  --color-atlas-cyan: #0098C0;
+  --color-atlas-white: #111111;
+  --color-atlas-off-white: #2A2A40;
+  --color-atlas-gray1: #374151;
+  --color-atlas-gray2: #6B7280;
+  --color-atlas-gray3: #9CA3AF;
+  --color-atlas-gray4: #B0B4BC;
+  --color-atlas-gray5: #E8E8F0;
+  --color-atlas-tooltip-bg: #FFFFFF;
 }

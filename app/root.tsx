@@ -10,11 +10,18 @@ import "./app.css";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>ATLAS</title>
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var m=document.cookie.match(/atlas-theme=([^;]+)/);if(m&&decodeURIComponent(m[1])==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}})();(function(){try{var m=document.cookie.match(/atlas-lang=([^;]+)/);if(m&&decodeURIComponent(m[1])==='es')document.documentElement.lang='es'}catch(e){}})()` }} />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
         <Meta />
         <Links />
       </head>

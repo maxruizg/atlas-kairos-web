@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { FetcherWithComponents } from "react-router";
+import { useT } from "~/lib/use-t";
 
 const DOC_TYPES = [
   "Capital Account Statement",
-  "Capital Call Notice",
-  "Distribution Notice",
   "Quarterly Report",
+  "Annual Report",
+  "Financial Statement",
 ];
 
 const FUNDS = [
@@ -30,8 +31,18 @@ export function UploadModal({ open, onClose, fetcher }: UploadModalProps) {
   const [fund, setFund] = useState(FUNDS[0]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const t = useT();
+  const tu = t.upload;
 
   const isSubmitting = fetcher.state !== "idle";
+
+  // Map API values to translated display labels
+  const docTypeLabels: Record<string, string> = {
+    "Capital Account Statement": tu.capitalAccountStatement,
+    "Quarterly Report": tu.quarterlyReport,
+    "Annual Report": tu.annualReport,
+    "Financial Statement": tu.financialStatement,
+  };
 
   // Close on success.
   useEffect(() => {
@@ -95,7 +106,7 @@ export function UploadModal({ open, onClose, fetcher }: UploadModalProps) {
       <div className="bg-atlas-card border border-atlas-border rounded-2xl w-full max-w-[480px] p-6 shadow-2xl">
         {/* Header */}
         <div className="flex justify-between items-center mb-5">
-          <h2 className="text-lg font-bold text-atlas-white">Upload Document</h2>
+          <h2 className="text-lg font-bold text-atlas-white">{tu.title}</h2>
           <button
             onClick={onClose}
             className="text-atlas-gray3 hover:text-atlas-white text-xl cursor-pointer bg-transparent border-none leading-none"
@@ -140,9 +151,9 @@ export function UploadModal({ open, onClose, fetcher }: UploadModalProps) {
             <div>
               <div className="text-2xl mb-1">&oplus;</div>
               <div className="text-sm text-atlas-gray2 font-medium">
-                Drag & drop or click to browse
+                {tu.dragDrop}
               </div>
-              <div className="text-[11px] text-atlas-gray4 mt-1">PDF or XLSX, up to 50 MB</div>
+              <div className="text-[11px] text-atlas-gray4 mt-1">{tu.fileHint}</div>
             </div>
           )}
         </div>
@@ -150,16 +161,16 @@ export function UploadModal({ open, onClose, fetcher }: UploadModalProps) {
         {/* Document Type */}
         <label className="block mb-3">
           <span className="text-xs font-semibold text-atlas-gray2 mb-1.5 block">
-            Document Type
+            {tu.docType}
           </span>
           <select
             value={docType}
             onChange={(e) => setDocType(e.target.value)}
             className="w-full bg-atlas-surface border border-atlas-border rounded-lg px-3 py-2 text-sm text-atlas-white appearance-none cursor-pointer"
           >
-            {DOC_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
+            {DOC_TYPES.map((dt) => (
+              <option key={dt} value={dt}>
+                {docTypeLabels[dt] || dt}
               </option>
             ))}
           </select>
@@ -167,7 +178,7 @@ export function UploadModal({ open, onClose, fetcher }: UploadModalProps) {
 
         {/* Fund */}
         <label className="block mb-5">
-          <span className="text-xs font-semibold text-atlas-gray2 mb-1.5 block">Fund</span>
+          <span className="text-xs font-semibold text-atlas-gray2 mb-1.5 block">{tu.fund}</span>
           <select
             value={fund}
             onChange={(e) => setFund(e.target.value)}
@@ -192,14 +203,14 @@ export function UploadModal({ open, onClose, fetcher }: UploadModalProps) {
             onClick={onClose}
             className="px-4 py-2 rounded-lg border border-atlas-border bg-transparent text-atlas-gray2 text-sm cursor-pointer font-medium"
           >
-            Cancel
+            {tu.cancel}
           </button>
           <button
             onClick={handleSubmit}
             disabled={!file || isSubmitting}
             className="px-4 py-2 rounded-lg border-none bg-atlas-purple text-atlas-white text-sm cursor-pointer font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSubmitting ? "Uploading\u2026" : "Upload"}
+            {isSubmitting ? tu.uploading : tu.upload}
           </button>
         </div>
       </div>
