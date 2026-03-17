@@ -1,6 +1,6 @@
 import type { Entity, Sponsor, Fund } from "~/lib/types";
 
-const API_BASE = process.env.API_URL || "http://127.0.0.1:8080/api/v1";
+const API_BASE = process.env.API_URL || "https://app-ancient-smoke-7925.fly.dev/api/v1";
 
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
