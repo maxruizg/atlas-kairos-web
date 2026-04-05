@@ -2,9 +2,11 @@ import { useState, useMemo } from "react";
 import { useLoaderData, Link } from "react-router";
 import { api } from "~/lib/api.server";
 import { getEntityFromRequest } from "~/lib/entity-context";
+import { useMergedSponsors } from "~/lib/use-merged-data";
 import type { Sponsor } from "~/lib/types";
 import { formatCurrency, formatMultiplier, formatIrr, irrColor } from "~/lib/utils";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
+import { AddSponsorDrawer } from "~/components/drawers/AddSponsorDrawer";
 import { useT } from "~/lib/use-t";
 
 export async function loader({ request }: { request: Request }) {
@@ -14,10 +16,12 @@ export async function loader({ request }: { request: Request }) {
 }
 
 export default function SponsorsIndex() {
-  const { sponsors } = useLoaderData<{ sponsors: Sponsor[] }>();
+  const loaderData = useLoaderData<{ sponsors: Sponsor[] }>();
+  const sponsors = useMergedSponsors(loaderData.sponsors);
   const [search, setSearch] = useState("");
   const [filterAsset, setFilterAsset] = useState<string>("All");
   const [filterGeo, setFilterGeo] = useState<string>("All");
+  const [showAddSponsor, setShowAddSponsor] = useState(false);
   const t = useT();
 
   // Collect unique asset classes and geographies
@@ -38,11 +42,19 @@ export default function SponsorsIndex() {
   return (
     <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-6">
       {/* Header */}
-      <div>
-        <h1 className="text-[22px] font-bold text-atlas-white font-display">{t.sponsors.title}</h1>
-        <p className="text-[13px] text-atlas-gray3 mt-0.5">
-          {t.sponsors.subtitle(sponsors.length, sponsors.reduce((s, sp) => s + sp.fund_count, 0))}
-        </p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-[22px] font-bold text-atlas-white font-display">{t.sponsors.title}</h1>
+          <p className="text-[13px] text-atlas-gray3 mt-0.5">
+            {t.sponsors.subtitle(sponsors.length, sponsors.reduce((s, sp) => s + sp.fund_count, 0))}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAddSponsor(true)}
+          className="px-3.5 py-[7px] rounded-lg border-none bg-atlas-purple text-atlas-white text-xs cursor-pointer font-semibold"
+        >
+          + {t.drawers.addSponsor}
+        </button>
       </div>
 
       {/* Search + Filters */}
@@ -119,6 +131,8 @@ export default function SponsorsIndex() {
           </Link>
         ))}
       </div>
+
+      <AddSponsorDrawer open={showAddSponsor} onClose={() => setShowAddSponsor(false)} />
     </div>
   );
 }

@@ -5,6 +5,7 @@ export default [
   route("/signup", "routes/signup.tsx"),
   layout("routes/_app.tsx", [
     route("/", "routes/_app._index.tsx"),
+    route("/dashboard", "routes/_app.dashboard.tsx"),
     route("/sponsors", "routes/_app.sponsors._index.tsx"),
     route("/sponsors/:sponsorId", "routes/_app.sponsors.$sponsorId.tsx"),
     route("/sponsors/:sponsorId/:fundId", "routes/_app.sponsors.$sponsorId.$fundId.tsx"),

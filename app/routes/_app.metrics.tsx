@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { useLoaderData } from "react-router";
+import { useState, useMemo } from "react";
+import { useLoaderData, useNavigate } from "react-router";
 import {
   BarChart,
   Bar,
@@ -16,7 +16,10 @@ import { formatCurrency, formatMultiplier, formatIrr, irrColor } from "~/lib/uti
 import { DarkTip } from "~/components/charts/DarkTip";
 import { useChartColors } from "~/lib/chart-colors";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
+import { MetricDetailPanel } from "~/components/ui/MetricDetailPanel";
 import { useT } from "~/lib/use-t";
+
+type MetricType = "grossIrr" | "netIrr" | "tvpi" | "dpi" | "rvpi" | "nav" | "paidIn" | "commitment" | "distributions" | "pctCalled" | "grossMoic" | "netMoic";
 
 export async function loader({ request }: { request: Request }) {
   const entityId = getEntityFromRequest(request) || undefined;
@@ -33,9 +36,32 @@ export default function Metrics() {
     sponsors: Sponsor[];
   }>();
 
+  const navigate = useNavigate();
   const cc = useChartColors();
   const t = useT();
   const tm = t.metrics;
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [expandedMetric, setExpandedMetric] = useState<MetricType | null>(null);
+
+  const portfolioAvgIrr = useMemo(() => {
+    const totalPaidIn = funds.reduce((s, f) => s + f.paid_in, 0);
+    return totalPaidIn > 0 ? funds.reduce((s, f) => s + f.net_irr * f.paid_in, 0) / totalPaidIn : 0;
+  }, [funds]);
+  const portfolioAvgTvpi = useMemo(() => {
+    const totalPaidIn = funds.reduce((s, f) => s + f.paid_in, 0);
+    return totalPaidIn > 0 ? funds.reduce((s, f) => s + f.tvpi * f.paid_in, 0) / totalPaidIn : 0;
+  }, [funds]);
+
+  const handleMetricClick = (fundId: string, metric: MetricType, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (expandedRow === fundId && expandedMetric === metric) {
+      setExpandedRow(null);
+      setExpandedMetric(null);
+    } else {
+      setExpandedRow(fundId);
+      setExpandedMetric(metric);
+    }
+  };
 
   const sponsorMap = useMemo(() => {
     const map: Record<string, Sponsor> = {};
@@ -68,9 +94,25 @@ export default function Metrics() {
   const tableHeaders = [
     tm.colSponsor, tm.colInvestment, tm.colCommitment, tm.colPaidIn, tm.colPctCalled,
     tm.colNav, tm.colDistributions, tm.colTvpi, tm.colDpi, tm.colRvpi,
-    tm.colGrossIrr, tm.colNetIrr, tm.colGrossMoic, tm.colNetMoic,
+    tm.colGrossIrr, tm.colNetIrr, tm.colGrossMoic, tm.colNetMoic, "",
   ];
-  const leftAlignHeaders = [tm.colSponsor, tm.colInvestment];
+  const leftAlignHeaders: string[] = [tm.colSponsor, tm.colInvestment];
+
+  // Map column header to metric type for click handling
+  const headerToMetric: Record<string, MetricType> = {
+    [tm.colCommitment]: "commitment",
+    [tm.colPaidIn]: "paidIn",
+    [tm.colPctCalled]: "pctCalled",
+    [tm.colNav]: "nav",
+    [tm.colDistributions]: "distributions",
+    [tm.colTvpi]: "tvpi",
+    [tm.colDpi]: "dpi",
+    [tm.colRvpi]: "rvpi",
+    [tm.colGrossIrr]: "grossIrr",
+    [tm.colNetIrr]: "netIrr",
+    [tm.colGrossMoic]: "grossMoic",
+    [tm.colNetMoic]: "netMoic",
+  };
 
   return (
     <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-6">
@@ -182,51 +224,63 @@ export default function Metrics() {
             <tbody>
               {funds.map((f) => {
                 const sp = sponsorMap[f.sponsor_id];
+                const cells: { value: string; cls: string; metric: MetricType; title?: string }[] = [
+                  { value: formatCurrency(f.commitment), cls: "text-right text-xs text-atlas-gray2 font-mono", metric: "commitment" },
+                  { value: formatCurrency(f.paid_in), cls: "text-right text-xs text-atlas-white font-mono", metric: "paidIn" },
+                  { value: `${f.pct_called.toFixed(0)}%`, cls: "text-right text-xs text-atlas-gray2 font-mono", metric: "pctCalled" },
+                  { value: formatCurrency(f.nav), cls: "text-right text-xs text-atlas-white font-mono", metric: "nav" },
+                  { value: formatCurrency(f.distributions), cls: "text-right text-xs text-atlas-gray2 font-mono", metric: "distributions" },
+                  { value: formatMultiplier(f.tvpi), cls: "text-right text-[12px] font-bold text-atlas-purple font-mono", metric: "tvpi" },
+                  { value: formatMultiplier(f.dpi), cls: "text-right text-xs text-atlas-gray2 font-mono", metric: "dpi" },
+                  { value: formatMultiplier(f.rvpi), cls: "text-right text-xs text-atlas-gray2 font-mono", metric: "rvpi" },
+                  { value: formatIrr(f.gross_irr), cls: `text-right text-[12px] font-bold font-mono ${irrColor(f.gross_irr)}`, metric: "grossIrr", title: formatIrr(f.gross_irr, 4) },
+                  { value: formatIrr(f.net_irr), cls: `text-right text-[12px] font-bold font-mono ${irrColor(f.net_irr)}`, metric: "netIrr", title: formatIrr(f.net_irr, 4) },
+                  { value: formatMultiplier(f.gross_moic), cls: "text-right text-xs text-atlas-gray2 font-mono", metric: "grossMoic" },
+                  { value: formatMultiplier(f.net_moic), cls: "text-right text-xs text-atlas-gray2 font-mono", metric: "netMoic" },
+                ];
                 return (
-                  <tr key={f.id} className="border-t border-atlas-border">
-                    <td className="py-[11px] px-3">
-                      {sp && <SponsorBadge initials={sp.initials} color={sp.color} />}
-                    </td>
-                    <td className="py-[11px] px-3 text-[12px] font-semibold text-atlas-white">
-                      {f.name}
-                    </td>
-                    <td className="py-[11px] px-3 text-right text-xs text-atlas-gray2 font-mono">
-                      {formatCurrency(f.commitment)}
-                    </td>
-                    <td className="py-[11px] px-3 text-right text-xs text-atlas-white font-mono">
-                      {formatCurrency(f.paid_in)}
-                    </td>
-                    <td className="py-[11px] px-3 text-right text-xs text-atlas-gray2 font-mono">
-                      {f.pct_called.toFixed(0)}%
-                    </td>
-                    <td className="py-[11px] px-3 text-right text-xs text-atlas-white font-mono">
-                      {formatCurrency(f.nav)}
-                    </td>
-                    <td className="py-[11px] px-3 text-right text-xs text-atlas-gray2 font-mono">
-                      {formatCurrency(f.distributions)}
-                    </td>
-                    <td className="py-[11px] px-3 text-right text-[12px] font-bold text-atlas-purple font-mono">
-                      {formatMultiplier(f.tvpi)}
-                    </td>
-                    <td className="py-[11px] px-3 text-right text-xs text-atlas-gray2 font-mono">
-                      {formatMultiplier(f.dpi)}
-                    </td>
-                    <td className="py-[11px] px-3 text-right text-xs text-atlas-gray2 font-mono">
-                      {formatMultiplier(f.rvpi)}
-                    </td>
-                    <td className={`py-[11px] px-3 text-right text-[12px] font-bold font-mono ${irrColor(f.gross_irr)}`} title={formatIrr(f.gross_irr, 4)}>
-                      {formatIrr(f.gross_irr)}
-                    </td>
-                    <td className={`py-[11px] px-3 text-right text-[12px] font-bold font-mono ${irrColor(f.net_irr)}`} title={formatIrr(f.net_irr, 4)}>
-                      {formatIrr(f.net_irr)}
-                    </td>
-                    <td className="py-[11px] px-3 text-right text-xs text-atlas-gray2 font-mono">
-                      {formatMultiplier(f.gross_moic)}
-                    </td>
-                    <td className="py-[11px] px-3 text-right text-xs text-atlas-gray2 font-mono">
-                      {formatMultiplier(f.net_moic)}
-                    </td>
-                  </tr>
+                  <>
+                    <tr
+                      key={f.id}
+                      onClick={() => navigate(`/sponsors/${f.sponsor_id}/${f.id}`)}
+                      className="border-t border-atlas-border cursor-pointer hover:bg-atlas-card-hover transition-colors"
+                    >
+                      <td className="py-[11px] px-3">
+                        {sp && <SponsorBadge initials={sp.initials} color={sp.color} />}
+                      </td>
+                      <td className="py-[11px] px-3 text-[12px] font-semibold text-atlas-white">
+                        {f.name}
+                      </td>
+                      {cells.map((c) => (
+                        <td
+                          key={c.metric}
+                          className={`py-[11px] px-3 ${c.cls}`}
+                          title={c.title}
+                          onClick={(e) => handleMetricClick(f.id, c.metric, e)}
+                        >
+                          <span className="hover:bg-atlas-purple-dim rounded px-1 -mx-1 transition-colors cursor-pointer">
+                            {c.value}
+                          </span>
+                        </td>
+                      ))}
+                      <td className="py-[11px] px-2 text-atlas-gray4 text-sm">&rsaquo;</td>
+                    </tr>
+                    {expandedRow === f.id && expandedMetric && (
+                      <tr key={`${f.id}-detail`}>
+                        <td colSpan={16} className="p-0">
+                          <div className="overflow-hidden transition-all duration-250 ease-in-out">
+                            <MetricDetailPanel
+                              fund={f}
+                              metric={expandedMetric}
+                              portfolioAvgIrr={portfolioAvgIrr}
+                              portfolioAvgTvpi={portfolioAvgTvpi}
+                              onClose={() => { setExpandedRow(null); setExpandedMetric(null); }}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 );
               })}
             </tbody>

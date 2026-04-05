@@ -6,6 +6,8 @@ import type { Document, Sponsor } from "~/lib/types";
 import { StatusBadge } from "~/components/ui/StatusBadge";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
 import { UploadModal } from "~/components/ui/UploadModal";
+import { DocViewModal } from "~/components/ui/DocViewModal";
+import { useToast } from "~/lib/toast-context";
 import { useT } from "~/lib/use-t";
 
 export async function loader({ request }: { request: Request }) {
@@ -44,9 +46,13 @@ export default function Vault() {
   }>();
   const [, setSearchParams] = useSearchParams();
   const [showUpload, setShowUpload] = useState(false);
+  const [previewDocId, setPreviewDocId] = useState<string | null>(null);
+  const [viewDoc, setViewDoc] = useState<Document | null>(null);
   const fetcher = useFetcher();
+  const { toast } = useToast();
   const t = useT();
   const tv = t.vault;
+  const da = t.docActions;
 
   const sponsorMap = useMemo(() => {
     const map: Record<string, Sponsor> = {};
@@ -156,6 +162,7 @@ export default function Vault() {
             {documents.map((d) => {
               const sp = d.sponsor_id ? sponsorMap[d.sponsor_id] : null;
               return (
+                <>
                 <tr
                   key={d.id}
                   className="border-t border-atlas-border cursor-pointer hover:bg-atlas-card-hover transition-colors"
@@ -197,16 +204,69 @@ export default function Vault() {
                     <StatusBadge status={d.status} />
                   </td>
                   <td className="py-3 px-3.5">
-                    {d.status === "Needs Review" && (
-                      <Link
-                        to="/review"
-                        className="px-2.5 py-1 rounded-md border border-atlas-orange bg-atlas-orange-dim text-atlas-orange text-[11px] font-semibold no-underline"
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setPreviewDocId(previewDocId === d.id ? null : d.id)}
+                        className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-atlas-purple-dim text-atlas-gray3 hover:text-atlas-purple transition-colors cursor-pointer text-xs"
+                        title={da.preview}
                       >
-                        {tv.review}
-                      </Link>
-                    )}
+                        &#x25A3;
+                      </button>
+                      <button
+                        onClick={() => setViewDoc(d)}
+                        className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-atlas-purple-dim text-atlas-gray3 hover:text-atlas-purple transition-colors cursor-pointer text-xs"
+                        title={da.view}
+                      >
+                        &#x2922;
+                      </button>
+                      <button
+                        onClick={() => toast(t.toast.downloadUnavailable, "warning")}
+                        className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-atlas-purple-dim text-atlas-gray3 hover:text-atlas-purple transition-colors cursor-pointer text-xs"
+                        title={da.download}
+                      >
+                        &#x2193;
+                      </button>
+                    </div>
                   </td>
                 </tr>
+                {previewDocId === d.id && (
+                  <tr key={`${d.id}-preview`}>
+                    <td colSpan={9} className="bg-atlas-surface border-t border-atlas-border p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="text-[13px] font-semibold text-atlas-white">{d.name}</div>
+                          <div className="text-[11px] text-atlas-gray3 mt-1">
+                            {d.doc_type} &middot; {sp ? sp.name : "\u2014"} &middot; {d.fund} &middot; {d.date} &middot; {d.size}
+                            {d.confidence ? ` \u00B7 ${d.confidence}%` : ""}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setPreviewDocId(null)}
+                          className="text-atlas-gray3 hover:text-atlas-white cursor-pointer text-sm"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                      {d.status === "Approved" && (
+                        <div className="bg-atlas-green-dim border border-atlas-green/20 rounded-lg px-3 py-2 text-[11px] text-atlas-green font-semibold">
+                          {da.verified}
+                        </div>
+                      )}
+                      {d.status === "Needs Review" && (
+                        <div className="bg-atlas-orange-dim border border-atlas-orange/20 rounded-lg px-3 py-2 text-[11px] text-atlas-orange font-semibold flex items-center gap-2">
+                          {da.pendingReview}
+                          <Link to="/review" className="text-atlas-orange underline text-[11px]">{da.goToReview}</Link>
+                        </div>
+                      )}
+                      {d.status !== "Approved" && d.status !== "Needs Review" && (
+                        <div className="bg-atlas-gray5 border border-atlas-border rounded-lg px-3 py-2 text-[11px] text-atlas-gray3">
+                          {da.notExtracted}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </>
               );
             })}
           </tbody>
@@ -214,6 +274,7 @@ export default function Vault() {
       </div>
 
       <UploadModal open={showUpload} onClose={() => setShowUpload(false)} fetcher={fetcher} />
+      {viewDoc && <DocViewModal doc={viewDoc} onClose={() => setViewDoc(null)} />}
     </div>
   );
 }

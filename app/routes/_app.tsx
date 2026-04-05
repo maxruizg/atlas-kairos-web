@@ -5,6 +5,8 @@ import { EntityProvider, getEntityFromRequest } from "~/lib/entity-context";
 import { ThemeProvider, getThemeFromRequest } from "~/lib/theme-context";
 import { LangProvider, getLangFromRequest } from "~/lib/lang-context";
 import { AuthProvider, getSessionFromRequest } from "~/lib/auth-context";
+import { ClientDataProvider } from "~/lib/client-data-context";
+import { ToastProvider } from "~/lib/toast-context";
 import { useT } from "~/lib/use-t";
 import { api } from "~/lib/api.server";
 import type { Entity } from "~/lib/types";
@@ -40,6 +42,8 @@ export default function AppLayout() {
     <ThemeProvider theme={theme}>
     <LangProvider lang={lang}>
     <EntityProvider entities={entities} selectedEntityId={selectedEntityId}>
+    <ClientDataProvider>
+    <ToastProvider>
       <div className="w-full h-screen flex flex-col overflow-hidden">
         <TopBar />
         <div className="flex-1 flex overflow-hidden">
@@ -48,6 +52,8 @@ export default function AppLayout() {
         </div>
         <Footer />
       </div>
+    </ToastProvider>
+    </ClientDataProvider>
     </EntityProvider>
     </LangProvider>
     </ThemeProvider>

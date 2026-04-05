@@ -5,7 +5,8 @@ export function Sidebar() {
   const t = useT();
 
   const items = [
-    { to: "/", icon: "\u25A6", label: t.sidebar.portfolio },
+    { to: "/", icon: "\u25C9", label: t.sidebar.entityMap },
+    { to: "/dashboard", icon: "\u25A6", label: t.sidebar.portfolio },
     { to: "/sponsors", icon: "\u25C8", label: t.sidebar.sponsors },
     { to: "/vault", icon: "\u229E", label: t.sidebar.vault },
     { to: "/review", icon: "\u25CE", label: t.sidebar.review },
@@ -22,7 +23,7 @@ export function Sidebar() {
           key={item.to}
           to={item.to}
           prefetch="intent"
-          end={item.to === "/"}
+          end={item.to === "/" || item.to === "/dashboard"}
           className={({ isActive }) =>
             `w-[46px] h-[46px] rounded-[10px] flex flex-col items-center justify-center gap-0.5 transition-all duration-150 no-underline ${
               isActive
