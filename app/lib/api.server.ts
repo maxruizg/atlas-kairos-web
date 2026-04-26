@@ -16,6 +16,41 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+/**
+ * Discriminated-union result for endpoints whose validation errors must
+ * surface as inline UI messages rather than route-level throws.
+ */
+export type ApiResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; status: number; error: string };
+
+async function fetchApiResult<T>(
+  path: string,
+  options?: RequestInit
+): Promise<ApiResult<T>> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+  if (res.ok) {
+    // 204 No Content — nothing to parse.
+    if (res.status === 204) return { ok: true, data: undefined as T };
+    return { ok: true, data: (await res.json()) as T };
+  }
+  // Best-effort parse of the structured error envelope from the backend.
+  let error = res.statusText || "Request failed";
+  try {
+    const body = await res.json();
+    if (body && typeof body.error === "string") error = body.error;
+  } catch {
+    // Non-JSON body — fall back to statusText.
+  }
+  return { ok: false, status: res.status, error };
+}
+
 export const api = {
   // Legacy portfolio endpoints
   getKpis: () => fetchApi<any[]>("/portfolio/kpis"),
@@ -63,6 +98,15 @@ export const api = {
 
   // Phase 1 — new endpoints
   getEntities: () => fetchApi<Entity[]>("/entities"),
+  createEntity: (payload: { name: string; short: string; nav: number }) =>
+    fetchApiResult<Entity>("/entities", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteEntity: (id: string) =>
+    fetchApiResult<void>(`/entities/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
   getSponsors: (entityId?: string) =>
     fetchApi<Sponsor[]>(`/sponsors${entityId ? `?entity=${entityId}` : ""}`),
   getSponsor: (id: string) => fetchApi<Sponsor>(`/sponsors/${id}`),

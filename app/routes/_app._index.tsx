@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router";
 import { api } from "~/lib/api.server";
 import { getEntityFromRequest, useEntity } from "~/lib/entity-context";
@@ -32,6 +32,7 @@ export default function EntityMap() {
   const [reassignTarget, setReassignTarget] = useState<string>("");
   const [tooltip, setTooltip] = useState<{ x: number; y: number; content: string } | null>(null);
   const { updateFundEntity } = useClientData();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const sponsorMap = useMemo(() => {
     const map: Record<string, Sponsor> = {};
@@ -183,6 +184,22 @@ export default function EntityMap() {
 
   const reassignFund = reassignFundId ? funds.find((f) => f.id === reassignFundId) : null;
 
+  // After the entity filter changes (and the layout has recomputed), reset
+  // the container's scroll so the new layout starts in a sensible position.
+  // For wide layouts (all entities) we re-center on SVG x=0; for narrow
+  // layouts the SVG is centered by mx-auto and no horizontal scroll exists.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // SVG renders at natural size (1 SVG unit = 1 CSS px). The element is
+    // centered with margin auto when it fits, otherwise it sits at left=0
+    // of the scroll container and overflows to the right.
+    const overflow = layout.viewBox.w - el.clientWidth;
+    const targetLeft =
+      overflow > 0 ? Math.max(0, -layout.viewBox.x - el.clientWidth / 2) : 0;
+    el.scrollTo({ left: targetLeft, top: 0, behavior: "smooth" });
+  }, [selectedEntityId, layout.viewBox.x, layout.viewBox.w]);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Controls bar */}
@@ -226,11 +243,22 @@ export default function EntityMap() {
       </div>
 
       {/* SVG Map */}
-      <div className="flex-1 overflow-auto relative">
+      <div ref={scrollRef} className="flex-1 overflow-auto relative">
         <svg
           viewBox={`${layout.viewBox.x} ${layout.viewBox.y} ${layout.viewBox.w} ${layout.viewBox.h}`}
-          className="w-full min-h-full"
-          style={{ minWidth: layout.viewBox.w, minHeight: layout.viewBox.h }}
+          width={layout.viewBox.w}
+          height={layout.viewBox.h}
+          // Render at natural size (1 SVG unit = 1 CSS px), centered when
+          // the layout is narrower than the container. The container's
+          // overflow-auto handles scroll for wider/taller layouts.
+          //
+          // We deliberately do NOT use `w-full min-h-full`: with no explicit
+          // height, Safari/Chrome derive the SVG's intrinsic height from
+          // the viewBox aspect ratio, which for narrow filtered layouts
+          // (single entity + 1 fund) produces a viewport-spanning SVG that
+          // scales the content several × and pushes the entity card far
+          // below the visible area.
+          className="block mx-auto"
         >
           {/* Lines */}
           {layout.lines.map((l, i) => (

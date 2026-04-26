@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLoaderData, useFetcher } from "react-router";
+import { api } from "~/lib/api.server";
 import { useTheme } from "~/lib/theme-context";
 import { useLang } from "~/lib/lang-context";
 import { useAuth } from "~/lib/auth-context";
 import { useT } from "~/lib/use-t";
+import { formatCurrency } from "~/lib/utils";
+import type { Entity } from "~/lib/types";
 
 function getCookie(name: string): string {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
@@ -14,7 +17,80 @@ function setCookie(name: string, value: string) {
   document.cookie = `${name}=${value};path=/;max-age=31536000`;
 }
 
+interface LoaderData {
+  entities: Entity[];
+  fundCountByEntity: Record<string, number>;
+}
+
+export async function loader(): Promise<LoaderData> {
+  const [entities, funds] = await Promise.all([
+    api.getEntities(),
+    api.getFunds(),
+  ]);
+  const fundCountByEntity: Record<string, number> = {};
+  for (const e of entities) fundCountByEntity[e.id] = 0;
+  for (const f of funds) {
+    fundCountByEntity[f.entity_id] = (fundCountByEntity[f.entity_id] || 0) + 1;
+  }
+  return { entities, fundCountByEntity };
+}
+
+interface ActionData {
+  intent: "create" | "delete";
+  ok: boolean;
+  error?: string;
+}
+
+export async function action({
+  request,
+}: {
+  request: Request;
+}): Promise<ActionData> {
+  const form = await request.formData();
+  const intent = form.get("intent");
+
+  if (intent === "create") {
+    const name = String(form.get("name") || "").trim();
+    const short = String(form.get("short") || "")
+      .trim()
+      .toUpperCase();
+    const navRaw = String(form.get("nav") || "0").trim();
+    const nav = Number(navRaw);
+
+    if (!name) return { intent: "create", ok: false, error: "Name is required" };
+    if (!/^[A-Z0-9]{2,6}$/.test(short)) {
+      return {
+        intent: "create",
+        ok: false,
+        error: "Short code must be 2–6 uppercase letters or digits",
+      };
+    }
+    if (!Number.isFinite(nav) || nav < 0) {
+      return {
+        intent: "create",
+        ok: false,
+        error: "NAV must be a non-negative number",
+      };
+    }
+
+    const result = await api.createEntity({ name, short, nav });
+    if (!result.ok) return { intent: "create", ok: false, error: result.error };
+    return { intent: "create", ok: true };
+  }
+
+  if (intent === "delete") {
+    const id = String(form.get("id") || "");
+    if (!id) return { intent: "delete", ok: false, error: "Missing entity id" };
+    const result = await api.deleteEntity(id);
+    if (!result.ok) return { intent: "delete", ok: false, error: result.error };
+    return { intent: "delete", ok: true };
+  }
+
+  return { intent: "create", ok: false, error: "Unknown intent" };
+}
+
 export default function SettingsPage() {
+  const { entities, fundCountByEntity } = useLoaderData() as LoaderData;
   const { theme, toggleTheme } = useTheme();
   const { lang, setLang } = useLang();
   const { logout } = useAuth();
@@ -137,6 +213,12 @@ export default function SettingsPage() {
           </div>
         </Section>
 
+        {/* Entities */}
+        <EntitiesSection
+          entities={entities}
+          fundCountByEntity={fundCountByEntity}
+        />
+
         {/* About */}
         <Section title={t.settings.about}>
           <div className="flex flex-col gap-1 text-sm">
@@ -208,5 +290,149 @@ function ToggleSwitch({ label, description, checked, onChange }: { label: string
         />
       </button>
     </div>
+  );
+}
+
+function EntitiesSection({
+  entities,
+  fundCountByEntity,
+}: {
+  entities: Entity[];
+  fundCountByEntity: Record<string, number>;
+}) {
+  const t = useT();
+  const ts = t.settings;
+  const createFetcher = useFetcher<ActionData>();
+  const deleteFetcher = useFetcher<ActionData>();
+
+  const [name, setName] = useState("");
+  const [short, setShort] = useState("");
+  const [nav, setNav] = useState("");
+
+  const isCreating =
+    createFetcher.state !== "idle" &&
+    createFetcher.formData?.get("intent") === "create";
+
+  // Reset the form once a successful create has been ack'd by the action.
+  useEffect(() => {
+    if (createFetcher.state === "idle" && createFetcher.data?.ok) {
+      setName("");
+      setShort("");
+      setNav("");
+    }
+  }, [createFetcher.state, createFetcher.data]);
+
+  const createError =
+    createFetcher.state === "idle" && createFetcher.data && !createFetcher.data.ok
+      ? createFetcher.data.error
+      : null;
+
+  const deleteError =
+    deleteFetcher.state === "idle" && deleteFetcher.data && !deleteFetcher.data.ok
+      ? deleteFetcher.data.error
+      : null;
+
+  return (
+    <Section title={ts.entities}>
+      <div className="text-xs text-atlas-gray4 mb-4">{ts.entitiesDesc}</div>
+
+      {/* Existing entities */}
+      <div className="flex flex-col gap-2 mb-5">
+        {entities.map((e) => {
+          const fundCount = fundCountByEntity[e.id] ?? 0;
+          const blocked = fundCount > 0;
+          return (
+            <div
+              key={e.id}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-atlas-surface border border-atlas-border"
+            >
+              <span className="text-[10px] px-2 py-0.5 rounded bg-atlas-purple-dim text-atlas-purple-light font-bold tracking-wider min-w-[44px] text-center">
+                {e.short}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] text-atlas-white font-medium truncate">
+                  {e.name}
+                </div>
+                <div className="text-[10px] text-atlas-gray4 font-mono">
+                  {ts.entityFunds(fundCount)} &middot; {formatCurrency(e.nav)}
+                </div>
+              </div>
+              <deleteFetcher.Form method="post">
+                <input type="hidden" name="intent" value="delete" />
+                <input type="hidden" name="id" value={e.id} />
+                <button
+                  type="submit"
+                  disabled={blocked}
+                  title={blocked ? ts.entityDeleteBlocked(fundCount) : ""}
+                  className="px-2.5 py-1 rounded-md border border-atlas-border bg-transparent text-[11px] font-semibold text-atlas-gray3 hover:border-red-500/40 hover:text-red-400 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-atlas-border disabled:hover:text-atlas-gray3"
+                >
+                  {ts.entityDelete}
+                </button>
+              </deleteFetcher.Form>
+            </div>
+          );
+        })}
+      </div>
+
+      {deleteError && (
+        <div className="text-[11px] text-red-400 mb-3" role="alert">
+          {deleteError}
+        </div>
+      )}
+
+      {/* Add entity form */}
+      <createFetcher.Form
+        method="post"
+        className="flex flex-col gap-2 pt-4 border-t border-atlas-border"
+      >
+        <input type="hidden" name="intent" value="create" />
+        <div className="text-[10px] font-semibold text-atlas-gray4 uppercase tracking-widest mb-1">
+          {ts.addEntity}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px_140px_auto] gap-2">
+          <input
+            name="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={ts.entityName}
+            maxLength={200}
+            required
+            className="bg-atlas-card border border-atlas-border rounded-md px-3 py-2 text-[12px] text-atlas-white outline-none placeholder:text-atlas-gray4 focus:border-atlas-purple transition-colors"
+          />
+          <input
+            name="short"
+            value={short}
+            onChange={(e) => setShort(e.target.value.toUpperCase().slice(0, 6))}
+            placeholder={ts.entityShort}
+            pattern="[A-Z0-9]{2,6}"
+            required
+            className="bg-atlas-card border border-atlas-border rounded-md px-3 py-2 text-[12px] text-atlas-white outline-none placeholder:text-atlas-gray4 focus:border-atlas-purple transition-colors font-mono uppercase"
+          />
+          <input
+            name="nav"
+            value={nav}
+            onChange={(e) => setNav(e.target.value)}
+            placeholder={ts.entityNav}
+            type="number"
+            min="0"
+            step="any"
+            required
+            className="bg-atlas-card border border-atlas-border rounded-md px-3 py-2 text-[12px] text-atlas-white outline-none placeholder:text-atlas-gray4 focus:border-atlas-purple transition-colors font-mono"
+          />
+          <button
+            type="submit"
+            disabled={isCreating}
+            className="px-4 py-2 rounded-md bg-atlas-purple border-none text-atlas-white text-[12px] font-semibold cursor-pointer disabled:opacity-50"
+          >
+            {isCreating ? "…" : ts.entityCreate}
+          </button>
+        </div>
+        {createError && (
+          <div className="text-[11px] text-red-400" role="alert">
+            {createError}
+          </div>
+        )}
+      </createFetcher.Form>
+    </Section>
   );
 }
