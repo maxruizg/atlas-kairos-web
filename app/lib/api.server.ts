@@ -1,6 +1,15 @@
-import type { Entity, Sponsor, Fund } from "~/lib/types";
+import type { Entity, Sponsor, Fund, Organization, PortfolioCompany } from "~/lib/types";
 
-const API_BASE = process.env.API_URL || "https://app-ancient-smoke-7925.fly.dev/api/v1";
+export const API_BASE =
+  process.env.API_URL || "https://app-ancient-smoke-7925.fly.dev/api/v1";
+
+export interface UserPublic {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
 
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -96,17 +105,78 @@ export const api = {
     return res.json();
   },
 
+  // Organization (tenant settings + onboarding flag)
+  getOrganization: (cookie?: string) =>
+    fetchApi<Organization>("/organization", {
+      headers: cookie ? { Cookie: cookie } : undefined,
+    }),
+  updateOrganization: (payload: Partial<Organization>, cookie?: string) =>
+    fetchApiResult<Organization>("/organization", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+      headers: cookie ? { Cookie: cookie } : undefined,
+    }),
+
   // Phase 1 — new endpoints
-  getEntities: () => fetchApi<Entity[]>("/entities"),
-  createEntity: (payload: { name: string; short: string; nav: number }) =>
+  getEntities: (cookie?: string) =>
+    fetchApi<Entity[]>("/entities", {
+      headers: cookie ? { Cookie: cookie } : undefined,
+    }),
+  createEntity: (payload: Partial<Entity>) =>
     fetchApiResult<Entity>("/entities", {
       method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateEntity: (id: string, payload: Partial<Entity>) =>
+    fetchApiResult<Entity>(`/entities/${encodeURIComponent(id)}`, {
+      method: "PUT",
       body: JSON.stringify(payload),
     }),
   deleteEntity: (id: string) =>
     fetchApiResult<void>(`/entities/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
+
+  createSponsor: (payload: {
+    name: string;
+    initials: string;
+    country: string;
+    color: string;
+  }) =>
+    fetchApiResult<Sponsor>("/sponsors", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteSponsor: (id: string) =>
+    fetchApiResult<void>(`/sponsors/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+
+  createFund: (payload: Partial<Fund>) =>
+    fetchApiResult<Fund>("/funds", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteFund: (id: string) =>
+    fetchApiResult<void>(`/funds/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+  updateFundEntity: (id: string, entityId: string) =>
+    fetchApiResult<Fund>(`/funds/${encodeURIComponent(id)}/entity`, {
+      method: "PATCH",
+      body: JSON.stringify({ entity_id: entityId }),
+    }),
+
+  createCompany: (fundId: string, payload: PortfolioCompany) =>
+    fetchApiResult<PortfolioCompany>(
+      `/funds/${encodeURIComponent(fundId)}/companies`,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+  deleteCompany: (fundId: string, name: string) =>
+    fetchApiResult<void>(
+      `/funds/${encodeURIComponent(fundId)}/companies/${encodeURIComponent(name)}`,
+      { method: "DELETE" }
+    ),
   getSponsors: (entityId?: string) =>
     fetchApi<Sponsor[]>(`/sponsors${entityId ? `?entity=${entityId}` : ""}`),
   getSponsor: (id: string) => fetchApi<Sponsor>(`/sponsors/${id}`),
@@ -119,17 +189,51 @@ export const api = {
   },
   getFund: (id: string) => fetchApi<Fund>(`/funds/${id}`),
 
-  // Auth
-  login: (email: string, password: string) =>
-    fetchApi<{ success: boolean; token: string }>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
+  // Auth — these intentionally bypass the api wrapper because the
+  // calling action needs the raw Response back to extract Set-Cookie.
+  // Use the helpers below in routes/login.tsx and routes/signup.tsx.
+
+  /** Authenticated `/auth/me` lookup. Pass the incoming request's
+   *  Cookie header so the backend can identify the session. */
+  getMe: (cookie?: string) =>
+    fetchApiResult<UserPublic>("/auth/me", {
+      headers: cookie ? { Cookie: cookie } : undefined,
     }),
-  signup: (name: string, email: string, password: string, confirmPassword: string) =>
-    fetchApi<{ success: boolean; token: string }>("/auth/signup", {
-      method: "POST",
-      body: JSON.stringify({ name, email, password, confirm_password: confirmPassword }),
-    }),
-  logout: () =>
-    fetchApi<{ success: boolean }>("/auth/logout", { method: "POST" }),
 };
+
+/** POST /auth/signup — returns the raw `Response` so the caller can
+ *  forward the backend's `Set-Cookie` header to the browser. */
+export function rawSignup(payload: {
+  name: string;
+  email: string;
+  password: string;
+  confirm_password: string;
+  organization_name?: string;
+}): Promise<Response> {
+  return fetch(`${API_BASE}/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /auth/login — returns the raw `Response` so the caller can
+ *  forward the backend's `Set-Cookie` header to the browser. */
+export function rawLogin(payload: {
+  email: string;
+  password: string;
+}): Promise<Response> {
+  return fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /auth/logout — also returns raw to forward the cookie-clear. */
+export function rawLogout(cookie?: string): Promise<Response> {
+  return fetch(`${API_BASE}/auth/logout`, {
+    method: "POST",
+    headers: cookie ? { Cookie: cookie } : undefined,
+  });
+}

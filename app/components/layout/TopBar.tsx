@@ -4,7 +4,11 @@ import { useTheme } from "~/lib/theme-context";
 import { useLang } from "~/lib/lang-context";
 import { useT } from "~/lib/use-t";
 
-export function TopBar() {
+interface TopBarProps {
+  organizationName: string;
+}
+
+export function TopBar({ organizationName }: TopBarProps) {
   const { entities, selectedEntityId } = useEntity();
   const { theme, toggleTheme } = useTheme();
   const { lang } = useLang();
@@ -39,7 +43,7 @@ export function TopBar() {
       </div>
       <div className="h-4 w-px bg-atlas-border" />
       <div className="text-xs text-atlas-gray3">
-        Familia Gonz&aacute;lez Office &middot; Alternatives Portfolio
+        {organizationName || "Atlas"} &middot; Alternatives Portfolio
       </div>
 
       {/* Entity selector */}

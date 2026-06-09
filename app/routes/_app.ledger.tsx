@@ -1,4 +1,10 @@
+import { useEffect, useRef } from "react";
+import { useSearchParams } from "react-router";
 import { useT } from "~/lib/use-t";
+import { useClientData } from "~/lib/client-data-context";
+import { useCan } from "~/lib/use-permissions";
+import { initialsFromName } from "~/lib/utils";
+import { DENIED_MESSAGE } from "~/lib/permissions";
 
 const AUDIT_LOG = [
   {
@@ -109,11 +115,62 @@ function actionColor(action: string) {
 export default function Ledger() {
   const t = useT();
   const tl = t.ledger;
+  const { auditLog } = useClientData();
+  const cn = useCan();
+  const [searchParams] = useSearchParams();
+  const focusEntryId = searchParams.get("entry");
+  const focusRef = useRef<HTMLTableRowElement>(null);
+
+  useEffect(() => {
+    if (focusEntryId && focusRef.current) {
+      focusRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [focusEntryId]);
 
   const tableHeaders = [
     tl.colTimestamp, tl.colUser, tl.colAction, tl.colEntity,
     tl.colField, tl.colOldValue, tl.colNewValue, tl.colScreen,
   ];
+
+  // Live audit entries (from this session's create/edit/valuation actions)
+  // are shown above the historical demo log, newest first.
+  const liveEntries = auditLog.map((e) => ({
+    id: e.id,
+    timestamp: e.timestamp.replace("T", " ").slice(0, 19),
+    user: e.user,
+    initials: initialsFromName(e.user),
+    action: e.action.charAt(0).toUpperCase() + e.action.slice(1),
+    entity: e.entity,
+    field: e.field ?? "",
+    old_value: e.old_value ?? null,
+    new_value: e.new_value ?? null,
+    screen: e.screen,
+  }));
+  const allEntries: Array<{
+    id?: string;
+    timestamp: string;
+    user: string;
+    initials: string;
+    action: string;
+    entity: string;
+    field: string;
+    old_value: string | null;
+    new_value: string | null;
+    screen: string;
+  }> = [...liveEntries, ...AUDIT_LOG.map((e) => ({ ...e, id: undefined }))];
+
+  // Viewer / LP cannot see the audit ledger or KYC data.
+  if (!cn("ledger.view")) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center max-w-sm">
+          <div className="text-[28px] mb-2 text-atlas-gray4">&#x1F512;</div>
+          <div className="text-[14px] font-semibold text-atlas-white mb-1">{tl.title}</div>
+          <div className="text-[12px] text-atlas-gray3">{DENIED_MESSAGE}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-6">
@@ -157,10 +214,17 @@ export default function Ledger() {
               </tr>
             </thead>
             <tbody>
-              {AUDIT_LOG.map((entry, i) => (
+              {allEntries.map((entry, i) => {
+                const focused = !!focusEntryId && entry.id === focusEntryId;
+                return (
                 <tr
-                  key={i}
-                  className="border-t border-atlas-border hover:bg-atlas-card-hover transition-colors"
+                  key={entry.id ?? i}
+                  ref={focused ? focusRef : undefined}
+                  className={`border-t border-atlas-border transition-colors ${
+                    focused
+                      ? "bg-atlas-purple-dim ring-1 ring-atlas-purple"
+                      : "hover:bg-atlas-card-hover"
+                  }`}
                 >
                   <td className="py-3 px-3 text-[11px] text-atlas-gray2 font-mono whitespace-nowrap">
                     {entry.timestamp}
@@ -198,7 +262,8 @@ export default function Ledger() {
                     </span>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

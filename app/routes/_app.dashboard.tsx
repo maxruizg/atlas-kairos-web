@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useLoaderData, useFetcher, isRouteErrorResponse, Link } from "react-router";
+import { useLoaderData, useFetcher, isRouteErrorResponse, Link, useNavigate } from "react-router";
 import { api } from "~/lib/api.server";
 import { handleUploadAction } from "~/lib/upload.server";
 import { getEntityFromRequest } from "~/lib/entity-context";
@@ -10,6 +10,10 @@ import { UploadModal } from "~/components/ui/UploadModal";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
 import { MiniDonut } from "~/components/charts/MiniDonut";
 import { ExposureChart } from "~/components/charts/ExposureChart";
+import { VintageCharts } from "~/components/charts/VintageCharts";
+import { InvestmentCounter } from "~/components/ui/InvestmentCounter";
+import { useMergedFunds } from "~/lib/use-merged-data";
+import { useClientData } from "~/lib/client-data-context";
 import { useT } from "~/lib/use-t";
 
 export async function loader({ request }: { request: Request }) {
@@ -26,12 +30,17 @@ export async function action({ request }: { request: Request }) {
 }
 
 export default function Dashboard() {
-  const { funds, sponsors } = useLoaderData<{
+  const { funds: loaderFunds, sponsors } = useLoaderData<{
     funds: Fund[];
     sponsors: Sponsor[];
   }>();
+  // Merge client-added/seed funds so KPIs, charts and the counter stay in
+  // sync the moment something is added.
+  const funds = useMergedFunds(loaderFunds);
+  const { directInvestments } = useClientData();
   const [showUpload, setShowUpload] = useState(false);
   const fetcher = useFetcher();
+  const navigate = useNavigate();
   const t = useT();
 
   // Build sponsor lookup
@@ -100,7 +109,7 @@ export default function Dashboard() {
     td.colGrossIrr, td.colNetIrr, td.colTvpi, td.colDpi, td.colRvpi,
     td.colPaidIn, td.colPctCalled, td.colReport,
   ];
-  const leftAlignHeaders = [td.colSponsor, td.colInvestment, td.colClass, td.colStrategy, td.colGeo];
+  const leftAlignHeaders: string[] = [td.colSponsor, td.colInvestment, td.colClass, td.colStrategy, td.colGeo];
 
   return (
     <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-6">
@@ -111,6 +120,9 @@ export default function Dashboard() {
           <p className="text-[13px] text-atlas-gray3 mt-0.5">
             {td.subtitle(funds.length)}
           </p>
+          <div className="mt-2">
+            <InvestmentCounter fundCount={funds.length} directCount={directInvestments.length} />
+          </div>
         </div>
         <div className="flex gap-2">
           <button className="px-3.5 py-[7px] rounded-lg border border-atlas-border bg-transparent text-atlas-gray2 text-xs cursor-pointer font-medium">
@@ -212,6 +224,9 @@ export default function Dashboard() {
       {/* Exposure Analysis */}
       <ExposureChart funds={funds} />
 
+      {/* Vintage distribution + deployment pace */}
+      <VintageCharts funds={funds} />
+
       {/* Investment Table */}
       <div className="bg-atlas-card border border-atlas-border rounded-[14px]">
         <div className="px-5 py-4 border-b border-atlas-border">
@@ -247,6 +262,7 @@ export default function Dashboard() {
                 return (
                   <tr
                     key={f.id}
+                    onClick={() => navigate(`/sponsors/${f.sponsor_id}/${f.id}`)}
                     className="border-t border-atlas-border cursor-pointer hover:bg-atlas-card-hover transition-colors"
                   >
                     <td className="py-3 px-3">

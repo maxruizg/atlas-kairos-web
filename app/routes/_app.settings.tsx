@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useLoaderData, useFetcher } from "react-router";
-import { api } from "~/lib/api.server";
+import { Form, useLoaderData, useFetcher, useRouteLoaderData } from "react-router";
+import { api, type UserPublic } from "~/lib/api.server";
 import { useTheme } from "~/lib/theme-context";
 import { useLang } from "~/lib/lang-context";
-import { useAuth } from "~/lib/auth-context";
 import { useT } from "~/lib/use-t";
-import { formatCurrency } from "~/lib/utils";
-import type { Entity } from "~/lib/types";
+import { formatCurrency, initialsFromName } from "~/lib/utils";
+import { AddEntityDrawer } from "~/components/drawers/AddEntityDrawer";
+import { TaxonomySection } from "~/components/settings/TaxonomySection";
+import { useCan } from "~/lib/use-permissions";
+import type { Entity, Organization } from "~/lib/types";
 
 function getCookie(name: string): string {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
@@ -20,23 +22,29 @@ function setCookie(name: string, value: string) {
 interface LoaderData {
   entities: Entity[];
   fundCountByEntity: Record<string, number>;
+  organization: Organization;
 }
 
 export async function loader(): Promise<LoaderData> {
-  const [entities, funds] = await Promise.all([
+  const [entities, funds, organization] = await Promise.all([
     api.getEntities(),
     api.getFunds(),
+    api.getOrganization(),
   ]);
   const fundCountByEntity: Record<string, number> = {};
   for (const e of entities) fundCountByEntity[e.id] = 0;
   for (const f of funds) {
     fundCountByEntity[f.entity_id] = (fundCountByEntity[f.entity_id] || 0) + 1;
   }
-  return { entities, fundCountByEntity };
+  return { entities, fundCountByEntity, organization };
 }
 
 interface ActionData {
-  intent: "create" | "delete";
+  intent:
+    | "create"
+    | "create-entity-full"
+    | "delete"
+    | "update-organization";
   ok: boolean;
   error?: string;
 }
@@ -78,6 +86,24 @@ export async function action({
     return { intent: "create", ok: true };
   }
 
+  if (intent === "create-entity-full") {
+    const raw = String(form.get("entity") || "{}");
+    let payload: Partial<Entity>;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return {
+        intent: "create-entity-full",
+        ok: false,
+        error: "Invalid entity payload",
+      };
+    }
+    const result = await api.createEntity(payload);
+    if (!result.ok)
+      return { intent: "create-entity-full", ok: false, error: result.error };
+    return { intent: "create-entity-full", ok: true };
+  }
+
   if (intent === "delete") {
     const id = String(form.get("id") || "");
     if (!id) return { intent: "delete", ok: false, error: "Missing entity id" };
@@ -86,16 +112,35 @@ export async function action({
     return { intent: "delete", ok: true };
   }
 
+  if (intent === "update-organization") {
+    const name = String(form.get("name") || "").trim();
+    if (!name)
+      return {
+        intent: "update-organization",
+        ok: false,
+        error: "Name is required",
+      };
+    const result = await api.updateOrganization({ name });
+    if (!result.ok)
+      return { intent: "update-organization", ok: false, error: result.error };
+    return { intent: "update-organization", ok: true };
+  }
+
   return { intent: "create", ok: false, error: "Unknown intent" };
 }
 
 export default function SettingsPage() {
-  const { entities, fundCountByEntity } = useLoaderData() as LoaderData;
+  const { entities, fundCountByEntity, organization } =
+    useLoaderData() as LoaderData;
+  // Pull the current user from the parent layout's loader (already
+  // authenticated there) — avoids a duplicate /auth/me round-trip.
+  const parentData = useRouteLoaderData("routes/_app") as
+    | { user?: UserPublic }
+    | undefined;
+  const user = parentData?.user;
   const { theme, toggleTheme } = useTheme();
   const { lang, setLang } = useLang();
-  const { logout } = useAuth();
   const t = useT();
-  const navigate = useNavigate();
 
   // Cookie-persisted UI preferences
   const [emailAlerts, setEmailAlerts] = useState(true);
@@ -119,11 +164,6 @@ export default function SettingsPage() {
     setCookie(key, String(value));
   }
 
-  function handleSignOut() {
-    logout();
-    navigate("/login");
-  }
-
   return (
     <main className="flex-1 overflow-y-auto p-8">
       <div className="max-w-2xl mx-auto flex flex-col gap-8">
@@ -133,11 +173,20 @@ export default function SettingsPage() {
         <Section title={t.settings.profile}>
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-atlas-purple-dim border border-atlas-purple flex items-center justify-center text-base text-atlas-purple font-bold">
-              CG
+              {initialsFromName(user?.name)}
             </div>
-            <div>
-              <div className="text-sm font-semibold text-atlas-white">Carlos González</div>
-              <div className="text-xs text-atlas-gray3">carlos@gonzalezfo.com</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-atlas-white truncate">
+                {user?.name || "—"}
+              </div>
+              <div className="text-xs text-atlas-gray3 truncate">
+                {user?.email || "—"}
+              </div>
+              {user?.role && (
+                <div className="text-[10px] mt-1 inline-block px-2 py-0.5 rounded bg-atlas-purple-dim text-atlas-purple-light font-bold uppercase tracking-widest">
+                  {user.role}
+                </div>
+              )}
             </div>
           </div>
         </Section>
@@ -213,11 +262,17 @@ export default function SettingsPage() {
           </div>
         </Section>
 
+        {/* Organization */}
+        <OrganizationSection organization={organization} />
+
         {/* Entities */}
         <EntitiesSection
           entities={entities}
           fundCountByEntity={fundCountByEntity}
         />
+
+        {/* Editable taxonomy lists (drives every Add dropdown) */}
+        <TaxonomySection />
 
         {/* About */}
         <Section title={t.settings.about}>
@@ -232,15 +287,16 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        {/* Sign Out */}
-        <div>
+        {/* Sign Out — POSTs to /logout so the backend can clear the
+             HttpOnly session cookie (JS can't touch it). */}
+        <Form method="post" action="/logout">
           <button
-            onClick={handleSignOut}
+            type="submit"
             className="px-5 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-semibold cursor-pointer hover:bg-red-500/20 transition-colors"
           >
             {t.settings.signOut}
           </button>
-        </div>
+        </Form>
       </div>
     </main>
   );
@@ -293,6 +349,53 @@ function ToggleSwitch({ label, description, checked, onChange }: { label: string
   );
 }
 
+function OrganizationSection({ organization }: { organization: Organization }) {
+  const fetcher = useFetcher<ActionData>();
+  const [name, setName] = useState(organization.name);
+
+  const isSubmitting =
+    fetcher.state !== "idle" &&
+    fetcher.formData?.get("intent") === "update-organization";
+
+  const error =
+    fetcher.state === "idle" &&
+    fetcher.data?.intent === "update-organization" &&
+    !fetcher.data.ok
+      ? fetcher.data.error
+      : null;
+
+  return (
+    <Section title="Organization">
+      <div className="text-xs text-atlas-gray4 mb-4">
+        The family or company name shown across the platform.
+      </div>
+      <fetcher.Form method="post" className="flex gap-2 items-stretch">
+        <input type="hidden" name="intent" value="update-organization" />
+        <input
+          name="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={200}
+          required
+          className="flex-1 bg-atlas-card border border-atlas-border rounded-md px-3 py-2 text-[12px] text-atlas-white outline-none focus:border-atlas-purple transition-colors"
+        />
+        <button
+          type="submit"
+          disabled={isSubmitting || !name.trim() || name === organization.name}
+          className="px-4 py-2 rounded-md bg-atlas-purple border-none text-atlas-white text-[12px] font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {isSubmitting ? "…" : "Save"}
+        </button>
+      </fetcher.Form>
+      {error && (
+        <div className="text-[11px] text-red-400 mt-2" role="alert">
+          {error}
+        </div>
+      )}
+    </Section>
+  );
+}
+
 function EntitiesSection({
   entities,
   fundCountByEntity,
@@ -302,30 +405,9 @@ function EntitiesSection({
 }) {
   const t = useT();
   const ts = t.settings;
-  const createFetcher = useFetcher<ActionData>();
+  const cn = useCan();
   const deleteFetcher = useFetcher<ActionData>();
-
-  const [name, setName] = useState("");
-  const [short, setShort] = useState("");
-  const [nav, setNav] = useState("");
-
-  const isCreating =
-    createFetcher.state !== "idle" &&
-    createFetcher.formData?.get("intent") === "create";
-
-  // Reset the form once a successful create has been ack'd by the action.
-  useEffect(() => {
-    if (createFetcher.state === "idle" && createFetcher.data?.ok) {
-      setName("");
-      setShort("");
-      setNav("");
-    }
-  }, [createFetcher.state, createFetcher.data]);
-
-  const createError =
-    createFetcher.state === "idle" && createFetcher.data && !createFetcher.data.ok
-      ? createFetcher.data.error
-      : null;
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const deleteError =
     deleteFetcher.state === "idle" && deleteFetcher.data && !deleteFetcher.data.ok
@@ -334,105 +416,95 @@ function EntitiesSection({
 
   return (
     <Section title={ts.entities}>
-      <div className="text-xs text-atlas-gray4 mb-4">{ts.entitiesDesc}</div>
+      <div className="flex justify-between items-start gap-3 mb-4">
+        <div className="text-xs text-atlas-gray4 flex-1">
+          {ts.entitiesDesc}
+        </div>
+        {cn("entity.add") && (
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            className="px-3 py-1.5 rounded-md bg-atlas-purple border-none text-atlas-white text-[11px] font-semibold cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+          >
+            + {t.drawers.addEntity}
+          </button>
+        )}
+      </div>
 
       {/* Existing entities */}
-      <div className="flex flex-col gap-2 mb-5">
-        {entities.map((e) => {
-          const fundCount = fundCountByEntity[e.id] ?? 0;
-          const blocked = fundCount > 0;
-          return (
-            <div
-              key={e.id}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-atlas-surface border border-atlas-border"
-            >
-              <span className="text-[10px] px-2 py-0.5 rounded bg-atlas-purple-dim text-atlas-purple-light font-bold tracking-wider min-w-[44px] text-center">
-                {e.short}
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] text-atlas-white font-medium truncate">
-                  {e.name}
+      <div className="flex flex-col gap-2">
+        {entities.length === 0 ? (
+          <div className="text-[11px] text-atlas-gray4 italic px-3 py-4 text-center bg-atlas-surface border border-dashed border-atlas-border rounded-lg">
+            No entities yet. Click "+ {t.drawers.addEntity}" to add your first one.
+          </div>
+        ) : (
+          entities.map((e) => {
+            const fundCount = fundCountByEntity[e.id] ?? 0;
+            const blocked = fundCount > 0;
+            return (
+              <div
+                key={e.id}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-atlas-surface border border-atlas-border"
+              >
+                <span className="text-[10px] px-2 py-0.5 rounded bg-atlas-purple-dim text-atlas-purple-light font-bold tracking-wider min-w-[44px] text-center">
+                  {e.short}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] text-atlas-white font-medium truncate">
+                    {e.name}
+                  </div>
+                  <div className="text-[10px] text-atlas-gray4 font-mono">
+                    {ts.entityFunds(fundCount)} &middot; {formatCurrency(e.nav)}
+                    {e.entity_type && (
+                      <>
+                        {" "}
+                        &middot; <span className="font-sans">{e.entity_type}</span>
+                      </>
+                    )}
+                    {e.risk_rating && (
+                      <>
+                        {" "}
+                        &middot;{" "}
+                        <span
+                          className={`font-sans ${
+                            e.risk_rating === "High"
+                              ? "text-red-400"
+                              : e.risk_rating === "Medium"
+                              ? "text-atlas-orange"
+                              : "text-atlas-green"
+                          }`}
+                        >
+                          {e.risk_rating}
+                        </span>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="text-[10px] text-atlas-gray4 font-mono">
-                  {ts.entityFunds(fundCount)} &middot; {formatCurrency(e.nav)}
-                </div>
+                <deleteFetcher.Form method="post">
+                  <input type="hidden" name="intent" value="delete" />
+                  <input type="hidden" name="id" value={e.id} />
+                  <button
+                    type="submit"
+                    disabled={blocked}
+                    title={blocked ? ts.entityDeleteBlocked(fundCount) : ""}
+                    className="px-2.5 py-1 rounded-md border border-atlas-border bg-transparent text-[11px] font-semibold text-atlas-gray3 hover:border-red-500/40 hover:text-red-400 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-atlas-border disabled:hover:text-atlas-gray3"
+                  >
+                    {ts.entityDelete}
+                  </button>
+                </deleteFetcher.Form>
               </div>
-              <deleteFetcher.Form method="post">
-                <input type="hidden" name="intent" value="delete" />
-                <input type="hidden" name="id" value={e.id} />
-                <button
-                  type="submit"
-                  disabled={blocked}
-                  title={blocked ? ts.entityDeleteBlocked(fundCount) : ""}
-                  className="px-2.5 py-1 rounded-md border border-atlas-border bg-transparent text-[11px] font-semibold text-atlas-gray3 hover:border-red-500/40 hover:text-red-400 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-atlas-border disabled:hover:text-atlas-gray3"
-                >
-                  {ts.entityDelete}
-                </button>
-              </deleteFetcher.Form>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       {deleteError && (
-        <div className="text-[11px] text-red-400 mb-3" role="alert">
+        <div className="text-[11px] text-red-400 mt-3" role="alert">
           {deleteError}
         </div>
       )}
 
-      {/* Add entity form */}
-      <createFetcher.Form
-        method="post"
-        className="flex flex-col gap-2 pt-4 border-t border-atlas-border"
-      >
-        <input type="hidden" name="intent" value="create" />
-        <div className="text-[10px] font-semibold text-atlas-gray4 uppercase tracking-widest mb-1">
-          {ts.addEntity}
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px_140px_auto] gap-2">
-          <input
-            name="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={ts.entityName}
-            maxLength={200}
-            required
-            className="bg-atlas-card border border-atlas-border rounded-md px-3 py-2 text-[12px] text-atlas-white outline-none placeholder:text-atlas-gray4 focus:border-atlas-purple transition-colors"
-          />
-          <input
-            name="short"
-            value={short}
-            onChange={(e) => setShort(e.target.value.toUpperCase().slice(0, 6))}
-            placeholder={ts.entityShort}
-            pattern="[A-Z0-9]{2,6}"
-            required
-            className="bg-atlas-card border border-atlas-border rounded-md px-3 py-2 text-[12px] text-atlas-white outline-none placeholder:text-atlas-gray4 focus:border-atlas-purple transition-colors font-mono uppercase"
-          />
-          <input
-            name="nav"
-            value={nav}
-            onChange={(e) => setNav(e.target.value)}
-            placeholder={ts.entityNav}
-            type="number"
-            min="0"
-            step="any"
-            required
-            className="bg-atlas-card border border-atlas-border rounded-md px-3 py-2 text-[12px] text-atlas-white outline-none placeholder:text-atlas-gray4 focus:border-atlas-purple transition-colors font-mono"
-          />
-          <button
-            type="submit"
-            disabled={isCreating}
-            className="px-4 py-2 rounded-md bg-atlas-purple border-none text-atlas-white text-[12px] font-semibold cursor-pointer disabled:opacity-50"
-          >
-            {isCreating ? "…" : ts.entityCreate}
-          </button>
-        </div>
-        {createError && (
-          <div className="text-[11px] text-red-400" role="alert">
-            {createError}
-          </div>
-        )}
-      </createFetcher.Form>
+      <AddEntityDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </Section>
   );
 }

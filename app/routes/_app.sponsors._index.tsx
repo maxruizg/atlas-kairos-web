@@ -7,6 +7,9 @@ import type { Sponsor } from "~/lib/types";
 import { formatCurrency, formatMultiplier, formatIrr, irrColor } from "~/lib/utils";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
 import { AddSponsorDrawer } from "~/components/drawers/AddSponsorDrawer";
+import { InvestmentCounter } from "~/components/ui/InvestmentCounter";
+import { useClientData } from "~/lib/client-data-context";
+import { useCan } from "~/lib/use-permissions";
 import { useT } from "~/lib/use-t";
 
 export async function loader({ request }: { request: Request }) {
@@ -15,9 +18,40 @@ export async function loader({ request }: { request: Request }) {
   return { sponsors };
 }
 
+export async function action({ request }: { request: Request }) {
+  const form = await request.formData();
+  const intent = form.get("intent");
+
+  if (intent === "create-sponsor") {
+    const name = String(form.get("name") || "").trim();
+    const initials = String(form.get("initials") || "").trim().toUpperCase();
+    const country = String(form.get("country") || "").trim();
+    const color = String(form.get("color") || "#8B7BD8").trim();
+
+    if (!name) return { intent, ok: false, error: "Name is required" };
+    if (!initials) return { intent, ok: false, error: "Initials are required" };
+
+    const result = await api.createSponsor({ name, initials, country, color });
+    if (!result.ok) return { intent, ok: false, error: result.error };
+    return { intent, ok: true };
+  }
+
+  if (intent === "delete-sponsor") {
+    const id = String(form.get("id") || "");
+    if (!id) return { intent, ok: false, error: "Missing sponsor id" };
+    const result = await api.deleteSponsor(id);
+    if (!result.ok) return { intent, ok: false, error: result.error };
+    return { intent, ok: true };
+  }
+
+  return { intent: "unknown", ok: false, error: "Unknown intent" };
+}
+
 export default function SponsorsIndex() {
   const loaderData = useLoaderData<{ sponsors: Sponsor[] }>();
   const sponsors = useMergedSponsors(loaderData.sponsors);
+  const { directInvestments } = useClientData();
+  const cn = useCan();
   const [search, setSearch] = useState("");
   const [filterAsset, setFilterAsset] = useState<string>("All");
   const [filterGeo, setFilterGeo] = useState<string>("All");
@@ -48,13 +82,21 @@ export default function SponsorsIndex() {
           <p className="text-[13px] text-atlas-gray3 mt-0.5">
             {t.sponsors.subtitle(sponsors.length, sponsors.reduce((s, sp) => s + sp.fund_count, 0))}
           </p>
+          <div className="mt-2">
+            <InvestmentCounter
+              fundCount={sponsors.reduce((s, sp) => s + sp.fund_count, 0)}
+              directCount={directInvestments.length}
+            />
+          </div>
         </div>
-        <button
-          onClick={() => setShowAddSponsor(true)}
-          className="px-3.5 py-[7px] rounded-lg border-none bg-atlas-purple text-atlas-white text-xs cursor-pointer font-semibold"
-        >
-          + {t.drawers.addSponsor}
-        </button>
+        {cn("fund.add") && (
+          <button
+            onClick={() => setShowAddSponsor(true)}
+            className="px-3.5 py-[7px] rounded-lg border-none bg-atlas-purple text-atlas-white text-xs cursor-pointer font-semibold"
+          >
+            + {t.drawers.addSponsor}
+          </button>
+        )}
       </div>
 
       {/* Search + Filters */}

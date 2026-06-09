@@ -3,22 +3,53 @@ import { useLoaderData, Link } from "react-router";
 import { api } from "~/lib/api.server";
 import { getEntityFromRequest } from "~/lib/entity-context";
 import { useMergedFunds } from "~/lib/use-merged-data";
+import { useClientData } from "~/lib/client-data-context";
+import { useDocViewer } from "~/lib/doc-viewer-context";
 import type { Sponsor, Fund, Document } from "~/lib/types";
 import { formatCurrency, formatMultiplier, formatIrr, irrColor } from "~/lib/utils";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
 import { StatusBadge } from "~/components/ui/StatusBadge";
 import { AddFundDrawer } from "~/components/drawers/AddFundDrawer";
 import { useToast } from "~/lib/toast-context";
+import { useCan } from "~/lib/use-permissions";
 import { useT } from "~/lib/use-t";
 
 export async function loader({ request, params }: { request: Request; params: { sponsorId: string } }) {
   const entityId = getEntityFromRequest(request) || undefined;
-  const [sponsor, funds, documents] = await Promise.all([
+  const [sponsor, funds] = await Promise.all([
     api.getSponsor(params.sponsorId),
     api.getFunds(entityId, params.sponsorId),
-    api.getDocuments(),
   ]);
-  return { sponsor, funds, documents };
+  return { sponsor, funds };
+}
+
+export async function action({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { sponsorId: string };
+}) {
+  const form = await request.formData();
+  const intent = form.get("intent");
+
+  if (intent === "create-fund") {
+    const payload = JSON.parse(String(form.get("fund") || "{}"));
+    payload.sponsor_id = params.sponsorId;
+    const result = await api.createFund(payload);
+    if (!result.ok) return { intent, ok: false, error: result.error };
+    return { intent, ok: true };
+  }
+
+  if (intent === "delete-fund") {
+    const id = String(form.get("id") || "");
+    if (!id) return { intent, ok: false, error: "Missing fund id" };
+    const result = await api.deleteFund(id);
+    if (!result.ok) return { intent, ok: false, error: result.error };
+    return { intent, ok: true };
+  }
+
+  return { intent: "unknown", ok: false, error: "Unknown intent" };
 }
 
 const DOC_TYPES = ["All", "Capital Account Statement", "Quarterly Report", "Annual Report", "Financial Statement"];
@@ -30,21 +61,32 @@ function confidenceColor(c: number): string {
 }
 
 export default function SponsorDetail() {
-  const { sponsor, funds: loaderFunds, documents: allDocs } = useLoaderData<{
+  const { sponsor, funds: loaderFunds } = useLoaderData<{
     sponsor: Sponsor;
     funds: Fund[];
-    documents: Document[];
   }>();
   const funds = useMergedFunds(loaderFunds);
+  const { documents: allDocs } = useClientData();
+  const { openDocObject } = useDocViewer();
   const t = useT();
   const sd = t.sponsorDetail;
   const da = t.docActions;
   const { toast } = useToast();
 
   const [showAddFund, setShowAddFund] = useState(false);
+  const cn = useCan();
   const [activeTab, setActiveTab] = useState<"funds" | "documents">("funds");
   const [docTypeFilter, setDocTypeFilter] = useState("All");
-  const [previewDocId, setPreviewDocId] = useState<string | null>(null);
+
+  function downloadDoc(d: Document) {
+    if (!d.file_url) return toast(t.toast.downloadUnavailable, "warning");
+    const a = document.createElement("a");
+    a.href = d.file_url;
+    a.download = d.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
 
   const totalCompanies = funds.reduce((s, f) => s + f.companies.length, 0);
 
@@ -83,12 +125,14 @@ export default function SponsorDetail() {
             {sponsor.country} &middot; {sponsor.fund_count} {sd.funds.toLowerCase()} &middot; {totalCompanies} {sd.companies.toLowerCase()}
           </p>
         </div>
-        <button
-          onClick={() => setShowAddFund(true)}
-          className="ml-auto px-3.5 py-[7px] rounded-lg border-none bg-atlas-purple text-atlas-white text-xs cursor-pointer font-semibold"
-        >
-          + {t.drawers.addFund}
-        </button>
+        {cn("fund.add") && (
+          <button
+            onClick={() => setShowAddFund(true)}
+            className="ml-auto px-3.5 py-[7px] rounded-lg border-none bg-atlas-purple text-atlas-white text-xs cursor-pointer font-semibold"
+          >
+            + {t.drawers.addFund}
+          </button>
+        )}
       </div>
 
       {/* Aggregate Metrics */}
@@ -223,61 +267,43 @@ export default function SponsorDetail() {
               </thead>
               <tbody>
                 {filteredDocs.map((d) => (
-                  <>
-                    <tr key={d.id} className="border-t border-atlas-border hover:bg-atlas-card-hover transition-colors">
-                      <td className="py-3 px-3.5">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-9 bg-atlas-border rounded flex items-center justify-center text-[9px] text-atlas-gray3 font-bold shrink-0">PDF</div>
-                          <div>
-                            <div className="text-[12.5px] font-semibold text-atlas-white">{d.name}</div>
-                            <div className="text-[10px] text-atlas-gray4">{d.size}</div>
-                          </div>
+                  <tr
+                    key={d.id}
+                    onClick={() => openDocObject(d)}
+                    className="border-t border-atlas-border hover:bg-atlas-card-hover transition-colors cursor-pointer"
+                  >
+                    <td className="py-3 px-3.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-9 bg-atlas-border rounded flex items-center justify-center text-[9px] text-atlas-gray3 font-bold shrink-0">{(d.file_url || "").toLowerCase().endsWith(".xlsx") ? "XLS" : "PDF"}</div>
+                        <div>
+                          <div className="text-[12.5px] font-semibold text-atlas-white">{d.name}</div>
+                          <div className="text-[10px] text-atlas-gray4">{d.size}</div>
                         </div>
-                      </td>
-                      <td className="py-3 px-3.5 text-[11.5px] text-atlas-gray2">{d.doc_type}</td>
-                      <td className="py-3 px-3.5 text-[11.5px] text-atlas-gray3">{d.fund.split(" ").slice(0, 2).join(" ")}</td>
-                      <td className="py-3 px-3.5">
-                        {d.confidence ? (
-                          <span className={`text-xs font-bold font-mono ${confidenceColor(d.confidence)}`}>{d.confidence}%</span>
-                        ) : (
-                          <span className="text-atlas-gray4 text-xs">&mdash;</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3.5 text-[11.5px] text-atlas-gray3 font-mono">{d.date}</td>
-                      <td className="py-3 px-3.5 text-[11.5px] text-atlas-gray3">{d.size}</td>
-                      <td className="py-3 px-3.5"><StatusBadge status={d.status} /></td>
-                      <td className="py-3 px-3.5">
-                        <div className="flex gap-1">
-                          <button onClick={() => setPreviewDocId(previewDocId === d.id ? null : d.id)} className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-atlas-purple-dim text-atlas-gray3 hover:text-atlas-purple transition-colors cursor-pointer text-xs" title={da.preview}>&#x25A3;</button>
-                          <button onClick={() => toast(t.toast.downloadUnavailable, "warning")} className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-atlas-purple-dim text-atlas-gray3 hover:text-atlas-purple transition-colors cursor-pointer text-xs" title={da.download}>&#x2193;</button>
-                        </div>
-                      </td>
-                    </tr>
-                    {previewDocId === d.id && (
-                      <tr key={`${d.id}-preview`}>
-                        <td colSpan={8} className="bg-atlas-surface border-t border-atlas-border p-4">
-                          <div className="flex justify-between items-start mb-2">
-                            <div className="text-[12px] font-semibold text-atlas-white">{d.name}</div>
-                            <button onClick={() => setPreviewDocId(null)} className="text-atlas-gray3 hover:text-atlas-white cursor-pointer text-sm">&times;</button>
-                          </div>
-                          <div className="text-[11px] text-atlas-gray3 mb-2">{d.doc_type} &middot; {d.date} &middot; {d.size}</div>
-                          {d.status === "Approved" && (
-                            <div className="bg-atlas-green-dim border border-atlas-green/20 rounded-lg px-3 py-2 text-[11px] text-atlas-green font-semibold">{da.verified}</div>
-                          )}
-                          {d.status === "Needs Review" && (
-                            <div className="bg-atlas-orange-dim border border-atlas-orange/20 rounded-lg px-3 py-2 text-[11px] text-atlas-orange font-semibold flex items-center gap-2">
-                              {da.pendingReview}
-                              <Link to="/review" className="text-atlas-orange underline text-[11px]">{da.goToReview}</Link>
-                            </div>
-                          )}
-                          {d.status !== "Approved" && d.status !== "Needs Review" && (
-                            <div className="bg-atlas-gray5 border border-atlas-border rounded-lg px-3 py-2 text-[11px] text-atlas-gray3">{da.notExtracted}</div>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                  </>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3.5 text-[11.5px] text-atlas-gray2">{d.doc_type}</td>
+                    <td className="py-3 px-3.5 text-[11.5px] text-atlas-gray3">{d.fund.split(" ").slice(0, 2).join(" ")}</td>
+                    <td className="py-3 px-3.5">
+                      {d.confidence ? (
+                        <span className={`text-xs font-bold font-mono ${confidenceColor(d.confidence)}`}>{d.confidence}%</span>
+                      ) : (
+                        <span className="text-atlas-gray4 text-xs">&mdash;</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3.5 text-[11.5px] text-atlas-gray3 font-mono">{d.date}</td>
+                    <td className="py-3 px-3.5 text-[11.5px] text-atlas-gray3">{d.size}</td>
+                    <td className="py-3 px-3.5"><StatusBadge status={d.status} /></td>
+                    <td className="py-3 px-3.5" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex gap-1">
+                        <button onClick={() => openDocObject(d)} className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-atlas-purple-dim text-atlas-gray3 hover:text-atlas-purple transition-colors cursor-pointer text-xs" title={da.view}>&#x2922;</button>
+                        <button onClick={() => downloadDoc(d)} className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-atlas-purple-dim text-atlas-gray3 hover:text-atlas-purple transition-colors cursor-pointer text-xs" title={da.download}>&#x2193;</button>
+                      </div>
+                    </td>
+                  </tr>
                 ))}
+                {filteredDocs.length === 0 && (
+                  <tr><td colSpan={8} className="py-6 text-center text-[12px] text-atlas-gray4">{da.noDocuments}</td></tr>
+                )}
               </tbody>
             </table>
           </div>

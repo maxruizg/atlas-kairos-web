@@ -1,24 +1,16 @@
 import { useState, useMemo } from "react";
-import { useLoaderData, useSearchParams, useFetcher, Link } from "react-router";
-import { api } from "~/lib/api.server";
+import { useSearchParams, useFetcher, useNavigate } from "react-router";
 import { handleUploadAction } from "~/lib/upload.server";
-import type { Document, Sponsor } from "~/lib/types";
+import type { Document } from "~/lib/types";
 import { StatusBadge } from "~/components/ui/StatusBadge";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
 import { UploadModal } from "~/components/ui/UploadModal";
-import { DocViewModal } from "~/components/ui/DocViewModal";
+import { LinkTo } from "~/components/ui/LinkTo";
+import { useClientData } from "~/lib/client-data-context";
+import { useDocViewer } from "~/lib/doc-viewer-context";
+import { sponsorPath } from "~/lib/nav";
 import { useToast } from "~/lib/toast-context";
 import { useT } from "~/lib/use-t";
-
-export async function loader({ request }: { request: Request }) {
-  const url = new URL(request.url);
-  const status = url.searchParams.get("status") || undefined;
-  const [documents, sponsors] = await Promise.all([
-    api.getDocuments(status),
-    api.getSponsors(),
-  ]);
-  return { documents, sponsors, activeStatus: status || "all" };
-}
 
 export async function action({ request }: { request: Request }) {
   return handleUploadAction(request);
@@ -39,15 +31,12 @@ function confidenceColor(c: number): string {
 }
 
 export default function Vault() {
-  const { documents, sponsors, activeStatus } = useLoaderData<{
-    documents: Document[];
-    sponsors: Sponsor[];
-    activeStatus: string;
-  }>();
-  const [, setSearchParams] = useSearchParams();
+  const { documents, sponsors } = useClientData();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { openDocObject } = useDocViewer();
+  const activeStatus = searchParams.get("status") || "all";
   const [showUpload, setShowUpload] = useState(false);
-  const [previewDocId, setPreviewDocId] = useState<string | null>(null);
-  const [viewDoc, setViewDoc] = useState<Document | null>(null);
   const fetcher = useFetcher();
   const { toast } = useToast();
   const t = useT();
@@ -55,12 +44,16 @@ export default function Vault() {
   const da = t.docActions;
 
   const sponsorMap = useMemo(() => {
-    const map: Record<string, Sponsor> = {};
+    const map: Record<string, (typeof sponsors)[number]> = {};
     for (const s of sponsors) map[s.id] = s;
     return map;
   }, [sponsors]);
 
-  // Status filters with translated labels but English API values
+  const visible = useMemo(
+    () => (activeStatus === "all" ? documents : documents.filter((d) => d.status === activeStatus)),
+    [documents, activeStatus]
+  );
+
   const STATUS_FILTERS: [string, string][] = [
     [tv.all, "all"],
     [tv.needsReview, "Needs Review"],
@@ -69,13 +62,18 @@ export default function Vault() {
     [tv.uploaded, "Uploaded"],
   ];
 
-  // Map API status values to translated labels for matching
-  const statusApiToLabel: Record<string, string> = {
-    "Needs Review": tv.needsReview,
-    Extracted: tv.extracted,
-    Approved: tv.approved,
-    Uploaded: tv.uploaded,
-  };
+  function download(d: Document) {
+    if (!d.file_url) {
+      toast(t.toast.downloadUnavailable, "warning");
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = d.file_url;
+    a.download = d.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
 
   return (
     <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-6">
@@ -104,12 +102,8 @@ export default function Vault() {
         className="border-[1.5px] border-dashed border-atlas-border rounded-[14px] p-5 text-center bg-atlas-card cursor-pointer hover:border-atlas-purple transition-colors"
       >
         <div className="text-[28px] mb-1.5">&oplus;</div>
-        <div className="text-[13px] text-atlas-gray2 font-medium">
-          {tv.dragDrop}
-        </div>
-        <div className="text-[11px] text-atlas-gray4 mt-[3px]">
-          {tv.supports}
-        </div>
+        <div className="text-[13px] text-atlas-gray2 font-medium">{tv.dragDrop}</div>
+        <div className="text-[11px] text-atlas-gray4 mt-[3px]">{tv.supports}</div>
       </div>
 
       {/* Status Pills */}
@@ -117,9 +111,7 @@ export default function Vault() {
         {STATUS_FILTERS.map(([label, value]) => {
           const isActive = activeStatus === value;
           const count =
-            value === "all"
-              ? documents.length
-              : documents.filter((d) => d.status === value).length;
+            value === "all" ? documents.length : documents.filter((d) => d.status === value).length;
           return (
             <button
               key={value}
@@ -147,9 +139,9 @@ export default function Vault() {
           <thead>
             <tr className="bg-atlas-surface">
               {[tv.colDocument, tv.colType, tv.colSponsor, tv.colFund, tv.colConfidence, tv.colDate, tv.colSize, tv.colStatus, ""].map(
-                (h) => (
+                (h, i) => (
                   <th
-                    key={h}
+                    key={i}
                     className="py-[9px] px-3.5 text-left text-[10.5px] font-semibold text-atlas-gray4 uppercase tracking-wider"
                   >
                     {h}
@@ -159,18 +151,24 @@ export default function Vault() {
             </tr>
           </thead>
           <tbody>
-            {documents.map((d) => {
+            {visible.map((d) => {
               const sp = d.sponsor_id ? sponsorMap[d.sponsor_id] : null;
               return (
-                <>
                 <tr
                   key={d.id}
+                  onClick={() => {
+                    if (d.status === "Needs Review") {
+                      navigate(`/review?doc=${encodeURIComponent(d.id)}`);
+                    } else {
+                      openDocObject(d);
+                    }
+                  }}
                   className="border-t border-atlas-border cursor-pointer hover:bg-atlas-card-hover transition-colors"
                 >
                   <td className="py-3 px-3.5">
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-9 bg-atlas-border rounded flex items-center justify-center text-[9px] text-atlas-gray3 font-bold shrink-0">
-                        PDF
+                        {(d.file_url || "").toLowerCase().endsWith(".xlsx") ? "XLS" : "PDF"}
                       </div>
                       <div>
                         <div className="text-[12.5px] font-semibold text-atlas-white">{d.name}</div>
@@ -181,7 +179,9 @@ export default function Vault() {
                   <td className="py-3 px-3.5 text-[11.5px] text-atlas-gray2">{d.doc_type}</td>
                   <td className="py-3 px-3.5">
                     {sp ? (
-                      <SponsorBadge initials={sp.initials} color={sp.color} name={sp.name} />
+                      <LinkTo to={sponsorPath(sp.id)} variant="bare" stopPropagation title={sp.name}>
+                        <SponsorBadge initials={sp.initials} color={sp.color} name={sp.name} />
+                      </LinkTo>
                     ) : (
                       <span className="text-atlas-gray4 text-xs">&mdash;</span>
                     )}
@@ -203,24 +203,26 @@ export default function Vault() {
                   <td className="py-3 px-3.5">
                     <StatusBadge status={d.status} />
                   </td>
-                  <td className="py-3 px-3.5">
+                  <td className="py-3 px-3.5" onClick={(e) => e.stopPropagation()}>
                     <div className="flex gap-1">
+                      {d.status === "Needs Review" && (
+                        <button
+                          onClick={() => navigate(`/review?doc=${encodeURIComponent(d.id)}`)}
+                          className="px-2.5 h-7 rounded-md flex items-center justify-center bg-atlas-orange-dim text-atlas-orange hover:bg-atlas-orange/20 transition-colors cursor-pointer text-[11px] font-semibold"
+                          title={da.goToReview}
+                        >
+                          {da.goToReview}
+                        </button>
+                      )}
                       <button
-                        onClick={() => setPreviewDocId(previewDocId === d.id ? null : d.id)}
-                        className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-atlas-purple-dim text-atlas-gray3 hover:text-atlas-purple transition-colors cursor-pointer text-xs"
-                        title={da.preview}
-                      >
-                        &#x25A3;
-                      </button>
-                      <button
-                        onClick={() => setViewDoc(d)}
+                        onClick={() => openDocObject(d)}
                         className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-atlas-purple-dim text-atlas-gray3 hover:text-atlas-purple transition-colors cursor-pointer text-xs"
                         title={da.view}
                       >
                         &#x2922;
                       </button>
                       <button
-                        onClick={() => toast(t.toast.downloadUnavailable, "warning")}
+                        onClick={() => download(d)}
                         className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-atlas-purple-dim text-atlas-gray3 hover:text-atlas-purple transition-colors cursor-pointer text-xs"
                         title={da.download}
                       >
@@ -229,44 +231,6 @@ export default function Vault() {
                     </div>
                   </td>
                 </tr>
-                {previewDocId === d.id && (
-                  <tr key={`${d.id}-preview`}>
-                    <td colSpan={9} className="bg-atlas-surface border-t border-atlas-border p-4">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <div className="text-[13px] font-semibold text-atlas-white">{d.name}</div>
-                          <div className="text-[11px] text-atlas-gray3 mt-1">
-                            {d.doc_type} &middot; {sp ? sp.name : "\u2014"} &middot; {d.fund} &middot; {d.date} &middot; {d.size}
-                            {d.confidence ? ` \u00B7 ${d.confidence}%` : ""}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => setPreviewDocId(null)}
-                          className="text-atlas-gray3 hover:text-atlas-white cursor-pointer text-sm"
-                        >
-                          &times;
-                        </button>
-                      </div>
-                      {d.status === "Approved" && (
-                        <div className="bg-atlas-green-dim border border-atlas-green/20 rounded-lg px-3 py-2 text-[11px] text-atlas-green font-semibold">
-                          {da.verified}
-                        </div>
-                      )}
-                      {d.status === "Needs Review" && (
-                        <div className="bg-atlas-orange-dim border border-atlas-orange/20 rounded-lg px-3 py-2 text-[11px] text-atlas-orange font-semibold flex items-center gap-2">
-                          {da.pendingReview}
-                          <Link to="/review" className="text-atlas-orange underline text-[11px]">{da.goToReview}</Link>
-                        </div>
-                      )}
-                      {d.status !== "Approved" && d.status !== "Needs Review" && (
-                        <div className="bg-atlas-gray5 border border-atlas-border rounded-lg px-3 py-2 text-[11px] text-atlas-gray3">
-                          {da.notExtracted}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                )}
-                </>
               );
             })}
           </tbody>
@@ -274,7 +238,6 @@ export default function Vault() {
       </div>
 
       <UploadModal open={showUpload} onClose={() => setShowUpload(false)} fetcher={fetcher} />
-      {viewDoc && <DocViewModal doc={viewDoc} onClose={() => setViewDoc(null)} />}
     </div>
   );
 }

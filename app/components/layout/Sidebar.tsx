@@ -1,17 +1,26 @@
-import { NavLink } from "react-router";
+import { NavLink, useRouteLoaderData } from "react-router";
 import { useT } from "~/lib/use-t";
+import { useCan } from "~/lib/use-permissions";
+import { initialsFromName } from "~/lib/utils";
+import type { UserPublic } from "~/lib/api.server";
 
 export function Sidebar() {
   const t = useT();
+  const cn = useCan();
+  const parentData = useRouteLoaderData("routes/_app") as
+    | { user?: UserPublic }
+    | undefined;
+  const user = parentData?.user;
 
   const items = [
     { to: "/", icon: "\u25C9", label: t.sidebar.entityMap },
     { to: "/dashboard", icon: "\u25A6", label: t.sidebar.portfolio },
     { to: "/sponsors", icon: "\u25C8", label: t.sidebar.sponsors },
+    { to: "/directs", icon: "\u25C6", label: t.sidebar.directs },
     { to: "/vault", icon: "\u229E", label: t.sidebar.vault },
     { to: "/review", icon: "\u25CE", label: t.sidebar.review },
     { to: "/metrics", icon: "\u25B3", label: t.sidebar.metrics },
-    { to: "/ledger", icon: "\u2261", label: t.sidebar.ledger },
+    ...(cn("ledger.view") ? [{ to: "/ledger", icon: "\u2261", label: t.sidebar.ledger }] : []),
     { to: "/qa", icon: "?", label: t.sidebar.qa },
     { to: "/atlas-ai", icon: "\u2726", label: t.sidebar.oracle },
   ];
@@ -60,8 +69,11 @@ export function Sidebar() {
             {t.sidebar.settings}
           </span>
         </NavLink>
-        <div className="w-7 h-7 rounded-full bg-atlas-purple-dim border border-atlas-purple flex items-center justify-center text-[11px] text-atlas-purple font-bold">
-          CG
+        <div
+          title={user?.name ?? ""}
+          className="w-7 h-7 rounded-full bg-atlas-purple-dim border border-atlas-purple flex items-center justify-center text-[11px] text-atlas-purple font-bold cursor-default"
+        >
+          {initialsFromName(user?.name)}
         </div>
       </div>
     </div>

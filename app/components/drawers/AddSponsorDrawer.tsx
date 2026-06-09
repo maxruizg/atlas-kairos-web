@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useFetcher } from "react-router";
 import { Drawer } from "~/components/ui/Drawer";
-import { useClientData } from "~/lib/client-data-context";
 import { useToast } from "~/lib/toast-context";
 import { useT } from "~/lib/use-t";
 
@@ -12,8 +12,14 @@ interface Props {
   onClose: () => void;
 }
 
+interface ActionResult {
+  intent?: string;
+  ok?: boolean;
+  error?: string;
+}
+
 export function AddSponsorDrawer({ open, onClose }: Props) {
-  const { addSponsor } = useClientData();
+  const fetcher = useFetcher<ActionResult>();
   const { toast } = useToast();
   const t = useT();
   const td = t.drawers;
@@ -46,25 +52,33 @@ export function AddSponsorDrawer({ open, onClose }: Props) {
     );
   };
 
+  const isSubmitting = fetcher.state !== "idle";
+
   const handleSubmit = () => {
-    if (!name.trim()) return;
-    addSponsor({
-      id: `s-${crypto.randomUUID().slice(0, 8)}`,
-      name: name.trim(),
-      initials: initials || deriveInitials(name),
-      country: country || "N/A",
-      color,
-      fund_count: 0,
-      total_nav: 0,
-      total_commitment: 0,
-      tvpi: 0,
-      net_irr: 0,
-      asset_classes: assetClasses.length > 0 ? assetClasses : ["Private Equity"],
-      company_count: 0,
-    });
-    toast(td.sponsorAdded, "success");
-    resetAndClose();
+    if (!name.trim() || isSubmitting) return;
+    fetcher.submit(
+      {
+        intent: "create-sponsor",
+        name: name.trim(),
+        initials: (initials || deriveInitials(name)).slice(0, 4),
+        country: country || "N/A",
+        color,
+      },
+      { method: "post", action: "/sponsors" }
+    );
   };
+
+  // Close + reset only after the action confirms success.
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ok) {
+      toast(td.sponsorAdded, "success");
+      resetAndClose();
+    }
+    if (fetcher.state === "idle" && fetcher.data?.error) {
+      toast(fetcher.data.error, "warning");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.state, fetcher.data]);
 
   const resetAndClose = () => {
     setName(""); setInitials(""); setCountry(""); setAssetClasses([]);
@@ -147,10 +161,10 @@ export function AddSponsorDrawer({ open, onClose }: Props) {
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={!name.trim()}
+          disabled={!name.trim() || isSubmitting}
           className="w-full mt-5 py-2.5 rounded-lg bg-atlas-purple text-atlas-white text-[13px] font-semibold cursor-pointer border-none disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {td.save}
+          {isSubmitting ? "…" : td.save}
         </button>
         <button
           onClick={resetAndClose}

@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useFetcher, useLocation } from "react-router";
 import { Drawer } from "~/components/ui/Drawer";
-import { useClientData } from "~/lib/client-data-context";
 import { useToast } from "~/lib/toast-context";
 import { useT } from "~/lib/use-t";
 
@@ -12,8 +12,15 @@ interface Props {
   fundId: string;
 }
 
+interface ActionResult {
+  intent?: string;
+  ok?: boolean;
+  error?: string;
+}
+
 export function AddCompanyDrawer({ open, onClose, fundId }: Props) {
-  const { addCompany } = useClientData();
+  const fetcher = useFetcher<ActionResult>();
+  const { pathname } = useLocation();
   const { toast } = useToast();
   const t = useT();
   const td = t.drawers;
@@ -31,9 +38,11 @@ export function AddCompanyDrawer({ open, onClose, fundId }: Props) {
   const fmvNum = parseFloat(fmv) || 0;
   const moic = useMemo(() => investedNum > 0 ? fmvNum / investedNum : 0, [fmvNum, investedNum]);
 
+  const isSubmitting = fetcher.state !== "idle";
+
   const handleSubmit = () => {
-    if (!name.trim()) return;
-    addCompany(fundId, {
+    if (!name.trim() || isSubmitting) return;
+    const company = {
       name: name.trim(),
       theme: theme || "General",
       stage: null,
@@ -44,10 +53,24 @@ export function AddCompanyDrawer({ open, onClose, fundId }: Props) {
       moic,
       irr: parseFloat(irr) || 0,
       own: parseFloat(own) || 0,
-    });
-    toast(td.companyAdded, "success");
-    resetAndClose();
+    };
+    fetcher.submit(
+      { intent: "create-company", company: JSON.stringify(company) },
+      { method: "post", action: pathname }
+    );
   };
+
+  // Close + reset only after the action confirms success.
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ok) {
+      toast(td.companyAdded, "success");
+      resetAndClose();
+    }
+    if (fetcher.state === "idle" && fetcher.data?.error) {
+      toast(fetcher.data.error, "warning");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.state, fetcher.data]);
 
   const resetAndClose = () => {
     setName(""); setTheme(""); setDate(""); setInvested("");
@@ -102,10 +125,10 @@ export function AddCompanyDrawer({ open, onClose, fundId }: Props) {
 
         <button
           onClick={handleSubmit}
-          disabled={!name.trim()}
+          disabled={!name.trim() || isSubmitting}
           className="w-full mt-5 py-2.5 rounded-lg bg-atlas-purple text-atlas-white text-[13px] font-semibold cursor-pointer border-none disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {td.save}
+          {isSubmitting ? "…" : td.save}
         </button>
         <button
           onClick={resetAndClose}

@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useT } from "~/lib/use-t";
+import { TutorialModal } from "~/components/ui/TutorialModal";
+import { TUTORIALS, TUTORIAL_ORDER, type TutorialId } from "~/lib/tutorials";
 
 interface QAItem {
   question: string;
@@ -110,7 +112,9 @@ const QA_DATA: QACategory[] = [
 
 export default function QA() {
   const [openItems, setOpenItems] = useState<Set<string>>(new Set());
+  const [activeTutorial, setActiveTutorial] = useState<TutorialId | null>(null);
   const t = useT();
+  const tt = t.tutorials;
 
   const toggle = (key: string) => {
     setOpenItems((prev) => {
@@ -193,6 +197,41 @@ export default function QA() {
           })}
         </div>
       ))}
+
+      {/* Tutoriales */}
+      <div>
+        <div className="text-[10px] font-semibold text-atlas-gray4 uppercase tracking-widest pb-2 mb-3 border-b border-atlas-border">
+          {tt.sectionTitle}
+        </div>
+        <p className="text-[12px] text-atlas-gray3 mb-3 -mt-1">{tt.sectionSubtitle}</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {TUTORIAL_ORDER.map((id) => {
+            const tut = TUTORIALS[id];
+            return (
+              <button
+                key={id}
+                onClick={() => setActiveTutorial(id)}
+                className="text-left bg-atlas-card border border-atlas-border rounded-[12px] p-4 cursor-pointer hover:border-atlas-purple hover:bg-atlas-card-hover transition-colors flex items-start gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-atlas-purple-dim border border-atlas-purple flex items-center justify-center text-atlas-purple text-sm shrink-0">
+                  &#x25B6;
+                </div>
+                <div>
+                  <div className="text-[13px] font-semibold text-atlas-white">{tut.title}</div>
+                  <div className="text-[11px] text-atlas-gray3 mt-0.5">{tut.intro}</div>
+                  <div className="text-[10px] text-atlas-purple mt-1.5 font-semibold">
+                    {tut.steps.length} pasos &middot; {tt.open}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {activeTutorial && (
+        <TutorialModal tutorial={TUTORIALS[activeTutorial]} onClose={() => setActiveTutorial(null)} />
+      )}
     </div>
   );
 }

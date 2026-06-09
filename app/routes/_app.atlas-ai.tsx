@@ -1,52 +1,33 @@
-import { useLoaderData, useFetcher } from "react-router";
+import { useRouteLoaderData } from "react-router";
 import { useEffect, useRef, useState } from "react";
-import { api } from "~/lib/api.server";
-import type { CopilotMessage, CopilotSuggestion } from "~/lib/types";
+import { useNavigate } from "react-router";
+import type { UserPublic } from "~/lib/api.server";
+import type { CopilotMessage } from "~/lib/types";
+import { SUGGESTIONS, answerFor } from "~/lib/atlas-ai-answers";
+import { useDocViewer } from "~/lib/doc-viewer-context";
+import { ledgerEntry } from "~/lib/nav";
 import { useT } from "~/lib/use-t";
-
-export async function loader() {
-  const [history, suggestions] = await Promise.all([
-    api.getCopilotHistory(),
-    api.getCopilotSuggestions(),
-  ]);
-  return { history, suggestions };
-}
-
-export async function action({ request }: { request: Request }) {
-  const formData = await request.formData();
-  const query = formData.get("query") as string;
-  const result = await api.submitCopilotQuery(query);
-  return result;
-}
+import { initialsFromName } from "~/lib/utils";
 
 export default function AtlasAI() {
-  const { history, suggestions } = useLoaderData<{
-    history: CopilotMessage[];
-    suggestions: CopilotSuggestion[];
-  }>();
-  const fetcher = useFetcher();
+  const [messages, setMessages] = useState<CopilotMessage[]>([]);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const { openDoc } = useDocViewer();
   const t = useT();
   const to = t.oracle;
-
-  // Build messages list with optimistic pending
-  const messages = [...history];
-  if (fetcher.formData) {
-    const pendingQuery = fetcher.formData.get("query") as string;
-    if (pendingQuery) {
-      messages.push({ role: "user", text: pendingQuery });
-    }
-  }
+  const parentData = useRouteLoaderData("routes/_app") as { user?: UserPublic } | undefined;
+  const userInitials = initialsFromName(parentData?.user?.name);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
   function handleSubmit(query?: string) {
-    const q = query || input.trim();
+    const q = (query ?? input).trim();
     if (!q) return;
-    fetcher.submit({ query: q }, { method: "post" });
+    setMessages((prev) => [...prev, { role: "user", text: q }, answerFor(q)]);
     setInput("");
   }
 
@@ -59,9 +40,7 @@ export default function AtlasAI() {
         </div>
         <div>
           <div className="text-[15px] font-bold text-atlas-white font-display">{to.title}</div>
-          <div className="text-[11px] text-atlas-gray4">
-            {to.subtitle}
-          </div>
+          <div className="text-[11px] text-atlas-gray4">{to.subtitle}</div>
         </div>
         <div className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-atlas-border">
           <span className="text-[10px] text-atlas-gray3">{to.poweredBy}</span>
@@ -74,9 +53,7 @@ export default function AtlasAI() {
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`flex gap-2.5 items-start ${
-              msg.role === "user" ? "flex-row-reverse" : "flex-row"
-            }`}
+            className={`flex gap-2.5 items-start ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
           >
             {/* Avatar */}
             <div
@@ -86,12 +63,11 @@ export default function AtlasAI() {
                   : "bg-atlas-surface border-atlas-border text-atlas-gray3"
               }`}
             >
-              {msg.role === "user" ? "CG" : "\u2726"}
+              {msg.role === "user" ? userInitials : "✦"}
             </div>
 
             {/* Content */}
             <div className="max-w-[75%] flex flex-col gap-2">
-              {/* Text bubble */}
               <div
                 className={`rounded-xl px-3.5 py-2.5 text-[13px] text-atlas-white leading-relaxed border ${
                   msg.role === "user"
@@ -108,12 +84,7 @@ export default function AtlasAI() {
                   <table className="w-full border-collapse">
                     <tbody>
                       {msg.table.map((row, ri) => (
-                        <tr
-                          key={ri}
-                          className={`border-b border-atlas-border ${
-                            ri === 0 ? "bg-atlas-surface" : ""
-                          }`}
-                        >
+                        <tr key={ri} className={`border-b border-atlas-border ${ri === 0 ? "bg-atlas-surface" : ""}`}>
                           {row.map((cell, ci) => (
                             <td
                               key={ci}
@@ -142,17 +113,22 @@ export default function AtlasAI() {
                 </div>
               )}
 
-              {/* Citations */}
+              {/* Citations — each chip resolves to a real document or ledger entry */}
               {msg.citations && (
-                <div className="flex flex-wrap gap-[5px]">
+                <div className="flex flex-wrap gap-[5px] items-center">
                   <span className="text-[10px] text-atlas-gray4 mr-0.5">{to.sources}</span>
                   {msg.citations.map((c, ci) => (
-                    <span
+                    <button
                       key={ci}
-                      className="text-[10px] px-2 py-0.5 rounded bg-atlas-purple-dim text-atlas-purple-light cursor-pointer"
+                      onClick={() => {
+                        if (c.kind === "document" && c.document_id) openDoc(c.document_id, c.page);
+                        else if (c.kind === "ledger" && c.ledger_entry_id) navigate(ledgerEntry(c.ledger_entry_id));
+                      }}
+                      title={c.label}
+                      className="text-[10px] px-2 py-0.5 rounded bg-atlas-purple-dim text-atlas-purple-light cursor-pointer border-none hover:bg-atlas-purple/25 hover:text-atlas-purple transition-colors"
                     >
-                      &#x1F517; {c}
-                    </span>
+                      &#x1F517; {c.label}
+                    </button>
                   ))}
                 </div>
               )}
@@ -164,13 +140,13 @@ export default function AtlasAI() {
 
       {/* Suggestions */}
       <div className="px-7 pb-3 flex gap-1.5 flex-wrap">
-        {suggestions.map((s, i) => (
+        {SUGGESTIONS.map((s, i) => (
           <button
             key={i}
-            onClick={() => handleSubmit(s.text)}
+            onClick={() => handleSubmit(s)}
             className="px-3 py-[5px] rounded-full border border-atlas-border bg-transparent text-atlas-gray3 text-[11px] cursor-pointer transition-colors hover:border-atlas-purple hover:text-atlas-purple"
           >
-            {s.text}
+            {s}
           </button>
         ))}
       </div>
