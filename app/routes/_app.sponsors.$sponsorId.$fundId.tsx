@@ -18,10 +18,17 @@ import { useToast } from "~/lib/toast-context";
 import { useCan } from "~/lib/use-permissions";
 import { useT } from "~/lib/use-t";
 
-export async function loader({ params }: { params: { sponsorId: string; fundId: string } }) {
+export async function loader({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { sponsorId: string; fundId: string };
+}) {
+  const cookie = request.headers.get("cookie") || undefined;
   const [fund, sponsor] = await Promise.all([
-    api.getFund(params.fundId),
-    api.getSponsor(params.sponsorId),
+    api.getFund(params.fundId, cookie),
+    api.getSponsor(params.sponsorId, cookie),
   ]);
   return { fund, sponsor };
 }
@@ -35,10 +42,11 @@ export async function action({
 }) {
   const form = await request.formData();
   const intent = form.get("intent");
+  const cookie = request.headers.get("cookie") || undefined;
 
   if (intent === "create-company") {
     const payload = JSON.parse(String(form.get("company") || "{}"));
-    const result = await api.createCompany(params.fundId, payload);
+    const result = await api.createCompany(params.fundId, payload, cookie);
     if (!result.ok) return { intent, ok: false, error: result.error };
     return { intent, ok: true };
   }
@@ -46,7 +54,7 @@ export async function action({
   if (intent === "delete-company") {
     const name = String(form.get("name") || "");
     if (!name) return { intent, ok: false, error: "Missing company name" };
-    const result = await api.deleteCompany(params.fundId, name);
+    const result = await api.deleteCompany(params.fundId, name, cookie);
     if (!result.ok) return { intent, ok: false, error: result.error };
     return { intent, ok: true };
   }

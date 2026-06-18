@@ -25,11 +25,16 @@ interface LoaderData {
   organization: Organization;
 }
 
-export async function loader(): Promise<LoaderData> {
+export async function loader({
+  request,
+}: {
+  request: Request;
+}): Promise<LoaderData> {
+  const cookie = request.headers.get("cookie") || undefined;
   const [entities, funds, organization] = await Promise.all([
-    api.getEntities(),
-    api.getFunds(),
-    api.getOrganization(),
+    api.getEntities(cookie),
+    api.getFunds(undefined, undefined, cookie),
+    api.getOrganization(cookie),
   ]);
   const fundCountByEntity: Record<string, number> = {};
   for (const e of entities) fundCountByEntity[e.id] = 0;
@@ -56,6 +61,7 @@ export async function action({
 }): Promise<ActionData> {
   const form = await request.formData();
   const intent = form.get("intent");
+  const cookie = request.headers.get("cookie") || undefined;
 
   if (intent === "create") {
     const name = String(form.get("name") || "").trim();
@@ -81,7 +87,7 @@ export async function action({
       };
     }
 
-    const result = await api.createEntity({ name, short, nav });
+    const result = await api.createEntity({ name, short, nav }, cookie);
     if (!result.ok) return { intent: "create", ok: false, error: result.error };
     return { intent: "create", ok: true };
   }
@@ -98,7 +104,7 @@ export async function action({
         error: "Invalid entity payload",
       };
     }
-    const result = await api.createEntity(payload);
+    const result = await api.createEntity(payload, cookie);
     if (!result.ok)
       return { intent: "create-entity-full", ok: false, error: result.error };
     return { intent: "create-entity-full", ok: true };
@@ -107,7 +113,7 @@ export async function action({
   if (intent === "delete") {
     const id = String(form.get("id") || "");
     if (!id) return { intent: "delete", ok: false, error: "Missing entity id" };
-    const result = await api.deleteEntity(id);
+    const result = await api.deleteEntity(id, cookie);
     if (!result.ok) return { intent: "delete", ok: false, error: result.error };
     return { intent: "delete", ok: true };
   }
@@ -120,7 +126,7 @@ export async function action({
         ok: false,
         error: "Name is required",
       };
-    const result = await api.updateOrganization({ name });
+    const result = await api.updateOrganization({ name }, cookie);
     if (!result.ok)
       return { intent: "update-organization", ok: false, error: result.error };
     return { intent: "update-organization", ok: true };

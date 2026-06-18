@@ -15,10 +15,11 @@ const BrainGraph = lazy(() => import("~/components/brain/BrainGraph"));
 
 export async function loader({ request }: { request: Request }) {
   const entityId = getEntityFromRequest(request) || undefined;
+  const cookie = request.headers.get("cookie") || undefined;
   const [entities, funds, sponsors] = await Promise.all([
-    api.getEntities(),
-    api.getFunds(entityId),
-    api.getSponsors(entityId),
+    api.getEntities(cookie),
+    api.getFunds(entityId, undefined, cookie),
+    api.getSponsors(entityId, cookie),
   ]);
   return { entities, funds, sponsors };
 }
@@ -32,7 +33,8 @@ export async function action({ request }: { request: Request }) {
     const entityId = String(form.get("entity_id") || "");
     if (!fundId || !entityId)
       return { intent, ok: false, error: "Missing fund or entity id" };
-    const result = await api.updateFundEntity(fundId, entityId);
+    const cookie = request.headers.get("cookie") || undefined;
+    const result = await api.updateFundEntity(fundId, entityId, cookie);
     if (!result.ok) return { intent, ok: false, error: result.error };
     return { intent, ok: true };
   }

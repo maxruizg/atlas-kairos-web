@@ -19,9 +19,10 @@ import type { Fund } from "~/lib/types";
 
 export async function loader({ request }: { request: Request }) {
   // Funds (NAV) are needed only for portfolio/asset-class denominators.
+  const cookie = request.headers.get("cookie") || undefined;
   let funds: Fund[] = [];
   try {
-    funds = await api.getFunds();
+    funds = await api.getFunds(undefined, undefined, cookie);
   } catch {
     /* degrade */
   }

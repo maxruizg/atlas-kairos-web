@@ -16,9 +16,10 @@ import { useT } from "~/lib/use-t";
 
 export async function loader({ request, params }: { request: Request; params: { sponsorId: string } }) {
   const entityId = getEntityFromRequest(request) || undefined;
+  const cookie = request.headers.get("cookie") || undefined;
   const [sponsor, funds] = await Promise.all([
-    api.getSponsor(params.sponsorId),
-    api.getFunds(entityId, params.sponsorId),
+    api.getSponsor(params.sponsorId, cookie),
+    api.getFunds(entityId, params.sponsorId, cookie),
   ]);
   return { sponsor, funds };
 }
@@ -32,11 +33,12 @@ export async function action({
 }) {
   const form = await request.formData();
   const intent = form.get("intent");
+  const cookie = request.headers.get("cookie") || undefined;
 
   if (intent === "create-fund") {
     const payload = JSON.parse(String(form.get("fund") || "{}"));
     payload.sponsor_id = params.sponsorId;
-    const result = await api.createFund(payload);
+    const result = await api.createFund(payload, cookie);
     if (!result.ok) return { intent, ok: false, error: result.error };
     return { intent, ok: true };
   }
@@ -44,7 +46,7 @@ export async function action({
   if (intent === "delete-fund") {
     const id = String(form.get("id") || "");
     if (!id) return { intent, ok: false, error: "Missing fund id" };
-    const result = await api.deleteFund(id);
+    const result = await api.deleteFund(id, cookie);
     if (!result.ok) return { intent, ok: false, error: result.error };
     return { intent, ok: true };
   }

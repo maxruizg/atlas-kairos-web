@@ -14,9 +14,10 @@ import type { Fund } from "~/lib/types";
 
 export async function loader({ request }: { request: Request }) {
   const entityId = getEntityFromRequest(request) || undefined;
+  const cookie = request.headers.get("cookie") || undefined;
   let funds: Fund[] = [];
   try {
-    funds = await api.getFunds(entityId);
+    funds = await api.getFunds(entityId, undefined, cookie);
   } catch {
     /* backend down — degrade */
   }

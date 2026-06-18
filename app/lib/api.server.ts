@@ -68,12 +68,15 @@ export const api = {
   getThemes: () => fetchApi<any[]>("/portfolio/themes"),
 
   // Documents
-  getDocuments: (status?: string) =>
-    fetchApi<any[]>(`/documents${status ? `?status=${status}` : ""}`),
-  updateDocumentStatus: (id: string, status: string) =>
+  getDocuments: (status?: string, cookie?: string) =>
+    fetchApi<any[]>(`/documents${status ? `?status=${status}` : ""}`, {
+      headers: cookie ? { Cookie: cookie } : undefined,
+    }),
+  updateDocumentStatus: (id: string, status: string, cookie?: string) =>
     fetchApi<any>(`/documents/${id}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
+      headers: cookie ? { Cookie: cookie } : undefined,
     }),
 
   // Review
@@ -94,10 +97,11 @@ export const api = {
     }),
 
   // Upload
-  uploadDocument: async (formData: FormData) => {
+  uploadDocument: async (formData: FormData, cookie?: string) => {
     const res = await fetch(`${API_BASE}/documents/upload`, {
       method: "POST",
       body: formData,
+      headers: cookie ? { Cookie: cookie } : undefined,
     });
     if (!res.ok) {
       throw new Response(`API error: ${res.statusText}`, { status: res.status });
@@ -122,72 +126,97 @@ export const api = {
     fetchApi<Entity[]>("/entities", {
       headers: cookie ? { Cookie: cookie } : undefined,
     }),
-  createEntity: (payload: Partial<Entity>) =>
+  createEntity: (payload: Partial<Entity>, cookie?: string) =>
     fetchApiResult<Entity>("/entities", {
       method: "POST",
       body: JSON.stringify(payload),
+      headers: cookie ? { Cookie: cookie } : undefined,
     }),
-  updateEntity: (id: string, payload: Partial<Entity>) =>
+  updateEntity: (id: string, payload: Partial<Entity>, cookie?: string) =>
     fetchApiResult<Entity>(`/entities/${encodeURIComponent(id)}`, {
       method: "PUT",
       body: JSON.stringify(payload),
+      headers: cookie ? { Cookie: cookie } : undefined,
     }),
-  deleteEntity: (id: string) =>
+  deleteEntity: (id: string, cookie?: string) =>
     fetchApiResult<void>(`/entities/${encodeURIComponent(id)}`, {
       method: "DELETE",
+      headers: cookie ? { Cookie: cookie } : undefined,
     }),
 
-  createSponsor: (payload: {
-    name: string;
-    initials: string;
-    country: string;
-    color: string;
-  }) =>
+  createSponsor: (
+    payload: {
+      name: string;
+      initials: string;
+      country: string;
+      color: string;
+    },
+    cookie?: string
+  ) =>
     fetchApiResult<Sponsor>("/sponsors", {
       method: "POST",
       body: JSON.stringify(payload),
+      headers: cookie ? { Cookie: cookie } : undefined,
     }),
-  deleteSponsor: (id: string) =>
+  deleteSponsor: (id: string, cookie?: string) =>
     fetchApiResult<void>(`/sponsors/${encodeURIComponent(id)}`, {
       method: "DELETE",
+      headers: cookie ? { Cookie: cookie } : undefined,
     }),
 
-  createFund: (payload: Partial<Fund>) =>
+  createFund: (payload: Partial<Fund>, cookie?: string) =>
     fetchApiResult<Fund>("/funds", {
       method: "POST",
       body: JSON.stringify(payload),
+      headers: cookie ? { Cookie: cookie } : undefined,
     }),
-  deleteFund: (id: string) =>
+  deleteFund: (id: string, cookie?: string) =>
     fetchApiResult<void>(`/funds/${encodeURIComponent(id)}`, {
       method: "DELETE",
+      headers: cookie ? { Cookie: cookie } : undefined,
     }),
-  updateFundEntity: (id: string, entityId: string) =>
+  updateFundEntity: (id: string, entityId: string, cookie?: string) =>
     fetchApiResult<Fund>(`/funds/${encodeURIComponent(id)}/entity`, {
       method: "PATCH",
       body: JSON.stringify({ entity_id: entityId }),
+      headers: cookie ? { Cookie: cookie } : undefined,
     }),
 
-  createCompany: (fundId: string, payload: PortfolioCompany) =>
+  createCompany: (fundId: string, payload: PortfolioCompany, cookie?: string) =>
     fetchApiResult<PortfolioCompany>(
       `/funds/${encodeURIComponent(fundId)}/companies`,
-      { method: "POST", body: JSON.stringify(payload) }
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: cookie ? { Cookie: cookie } : undefined,
+      }
     ),
-  deleteCompany: (fundId: string, name: string) =>
+  deleteCompany: (fundId: string, name: string, cookie?: string) =>
     fetchApiResult<void>(
       `/funds/${encodeURIComponent(fundId)}/companies/${encodeURIComponent(name)}`,
-      { method: "DELETE" }
+      { method: "DELETE", headers: cookie ? { Cookie: cookie } : undefined }
     ),
-  getSponsors: (entityId?: string) =>
-    fetchApi<Sponsor[]>(`/sponsors${entityId ? `?entity=${entityId}` : ""}`),
-  getSponsor: (id: string) => fetchApi<Sponsor>(`/sponsors/${id}`),
-  getFunds: (entityId?: string, sponsorId?: string) => {
+  getSponsors: (entityId?: string, cookie?: string) =>
+    fetchApi<Sponsor[]>(`/sponsors${entityId ? `?entity=${entityId}` : ""}`, {
+      headers: cookie ? { Cookie: cookie } : undefined,
+    }),
+  getSponsor: (id: string, cookie?: string) =>
+    fetchApi<Sponsor>(`/sponsors/${id}`, {
+      headers: cookie ? { Cookie: cookie } : undefined,
+    }),
+  getFunds: (entityId?: string, sponsorId?: string, cookie?: string) => {
     const params = new URLSearchParams();
     if (entityId) params.set("entity", entityId);
     if (sponsorId) params.set("sponsor", sponsorId);
     const qs = params.toString();
-    return fetchApi<Fund[]>(`/funds${qs ? `?${qs}` : ""}`);
+    return fetchApi<Fund[]>(`/funds${qs ? `?${qs}` : ""}`, {
+      headers: cookie ? { Cookie: cookie } : undefined,
+    });
   },
-  getFund: (id: string) => fetchApi<Fund>(`/funds/${id}`),
+  getFund: (id: string, cookie?: string) =>
+    fetchApi<Fund>(`/funds/${id}`, {
+      headers: cookie ? { Cookie: cookie } : undefined,
+    }),
 
   // Auth — these intentionally bypass the api wrapper because the
   // calling action needs the raw Response back to extract Set-Cookie.

@@ -23,9 +23,10 @@ type MetricType = "grossIrr" | "netIrr" | "tvpi" | "dpi" | "rvpi" | "nav" | "pai
 
 export async function loader({ request }: { request: Request }) {
   const entityId = getEntityFromRequest(request) || undefined;
+  const cookie = request.headers.get("cookie") || undefined;
   const [funds, sponsors] = await Promise.all([
-    api.getFunds(entityId),
-    api.getSponsors(entityId),
+    api.getFunds(entityId, undefined, cookie),
+    api.getSponsors(entityId, cookie),
   ]);
   return { funds, sponsors };
 }

@@ -14,13 +14,15 @@ import { useT } from "~/lib/use-t";
 
 export async function loader({ request }: { request: Request }) {
   const entityId = getEntityFromRequest(request) || undefined;
-  const sponsors = await api.getSponsors(entityId);
+  const cookie = request.headers.get("cookie") || undefined;
+  const sponsors = await api.getSponsors(entityId, cookie);
   return { sponsors };
 }
 
 export async function action({ request }: { request: Request }) {
   const form = await request.formData();
   const intent = form.get("intent");
+  const cookie = request.headers.get("cookie") || undefined;
 
   if (intent === "create-sponsor") {
     const name = String(form.get("name") || "").trim();
@@ -31,7 +33,7 @@ export async function action({ request }: { request: Request }) {
     if (!name) return { intent, ok: false, error: "Name is required" };
     if (!initials) return { intent, ok: false, error: "Initials are required" };
 
-    const result = await api.createSponsor({ name, initials, country, color });
+    const result = await api.createSponsor({ name, initials, country, color }, cookie);
     if (!result.ok) return { intent, ok: false, error: result.error };
     return { intent, ok: true };
   }
@@ -39,7 +41,7 @@ export async function action({ request }: { request: Request }) {
   if (intent === "delete-sponsor") {
     const id = String(form.get("id") || "");
     if (!id) return { intent, ok: false, error: "Missing sponsor id" };
-    const result = await api.deleteSponsor(id);
+    const result = await api.deleteSponsor(id, cookie);
     if (!result.ok) return { intent, ok: false, error: result.error };
     return { intent, ok: true };
   }
