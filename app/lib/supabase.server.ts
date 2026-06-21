@@ -19,8 +19,13 @@ import type {
   Document,
   ReviewField,
   GraphNodeMeta,
+  Sponsor,
+  SponsorBase,
+  Fund,
+  Entity,
 } from "~/lib/types";
 import { DEFAULT_TAXONOMY } from "~/lib/taxonomy";
+import { fetchWithRetry } from "~/lib/retry";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -51,7 +56,7 @@ export async function uploadDocumentFile(
   bytes: ArrayBuffer | Uint8Array,
   contentType: string
 ): Promise<{ file_url: string; storage_path: string }> {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `${SUPABASE_URL.replace(/\/$/, "")}/storage/v1/object/${STORAGE_BUCKET}/${path}`,
     {
       method: "POST",
@@ -81,7 +86,7 @@ function headers(extra?: Record<string, string>): Record<string, string> {
 }
 
 async function pgrst<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${restBase()}${path}`, {
+  const res = await fetchWithRetry(`${restBase()}${path}`, {
     ...init,
     headers: headers(init?.headers as Record<string, string>),
   });
@@ -174,6 +179,196 @@ export async function deleteDirect(orgId: string, id: string): Promise<void> {
     `/direct_investments?organization_id=eq.${orgId}&id=eq.${encodeURIComponent(id)}`,
     { method: "DELETE" }
   );
+}
+
+// ── Sponsors ────────────────────────────────────────────────────────────────
+// Persisted base columns only; the aggregate metrics on the `Sponsor` type
+// (fund_count / total_nav / tvpi / net_irr / company_count) are DERIVED from
+// the org's funds at read time — see `lib/portfolio.ts`.
+
+const SPONSOR_SELECT = "id,name,initials,country,color,asset_classes";
+
+export async function listSponsors(orgId: string): Promise<SponsorBase[]> {
+  return pgrst<SponsorBase[]>(
+    `/sponsors?organization_id=eq.${orgId}&select=${SPONSOR_SELECT}&order=created_at.asc`
+  );
+}
+
+export async function insertSponsor(orgId: string, s: Partial<Sponsor> & { id: string; name: string; initials: string }): Promise<SponsorBase> {
+  const row = {
+    id: s.id,
+    organization_id: orgId,
+    name: s.name,
+    initials: s.initials,
+    country: s.country ?? "",
+    color: s.color ?? "#8B7BD8",
+    asset_classes: s.asset_classes ?? [],
+  };
+  const out = await pgrst<SponsorBase[]>(`/sponsors?select=${SPONSOR_SELECT}`, {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(row),
+  });
+  return out[0];
+}
+
+export async function updateSponsor(
+  orgId: string,
+  id: string,
+  patch: Partial<SponsorBase>
+): Promise<SponsorBase> {
+  const out = await pgrst<SponsorBase[]>(
+    `/sponsors?organization_id=eq.${orgId}&id=eq.${encodeURIComponent(id)}&select=${SPONSOR_SELECT}`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(patch),
+    }
+  );
+  return out[0];
+}
+
+export async function deleteSponsor(orgId: string, id: string): Promise<void> {
+  await pgrst<void>(
+    `/sponsors?organization_id=eq.${orgId}&id=eq.${encodeURIComponent(id)}`,
+    { method: "DELETE" }
+  );
+}
+
+// ── Funds ─────────────────────────────────────────────────────────────────--
+
+const FUND_SELECT =
+  "id,sponsor_id,entity_id,name,vintage,strategy,asset_class,sub_theme,ticket_size," +
+  "fund_size,geography,currency,commitment,paid_in,nav,distributions,unfunded,tvpi," +
+  "dpi,rvpi,gross_irr,net_irr,gross_moic,net_moic,pct_called,latest_report_q," +
+  "report_received,risk_rating,transactions,companies,nav_history,cashflows,capital_log";
+
+/** Map a (partial) Fund to the persistable row, defaulting every column so a
+ *  minimal Add-Fund payload still satisfies the NOT NULL constraints. */
+function fundRow(orgId: string, f: Partial<Fund> & { id: string }) {
+  return {
+    id: f.id,
+    organization_id: orgId,
+    sponsor_id: f.sponsor_id,
+    entity_id: f.entity_id,
+    name: f.name ?? "",
+    vintage: f.vintage ?? new Date().getUTCFullYear(),
+    strategy: f.strategy ?? "",
+    asset_class: f.asset_class ?? "",
+    sub_theme: f.sub_theme ?? null,
+    ticket_size: f.ticket_size ?? null,
+    fund_size: f.fund_size ?? null,
+    geography: f.geography ?? "",
+    currency: f.currency ?? "USD",
+    commitment: f.commitment ?? 0,
+    paid_in: f.paid_in ?? 0,
+    nav: f.nav ?? 0,
+    distributions: f.distributions ?? 0,
+    unfunded: f.unfunded ?? 0,
+    tvpi: f.tvpi ?? 0,
+    dpi: f.dpi ?? 0,
+    rvpi: f.rvpi ?? 0,
+    gross_irr: f.gross_irr ?? 0,
+    net_irr: f.net_irr ?? 0,
+    gross_moic: f.gross_moic ?? 0,
+    net_moic: f.net_moic ?? 0,
+    pct_called: f.pct_called ?? 0,
+    latest_report_q: f.latest_report_q ?? "",
+    report_received: f.report_received ?? false,
+    risk_rating: f.risk_rating ?? null,
+    transactions: f.transactions ?? [],
+    companies: f.companies ?? [],
+    nav_history: f.nav_history ?? [],
+    cashflows: f.cashflows ?? [],
+    capital_log: f.capital_log ?? [],
+  };
+}
+
+export async function listFunds(orgId: string, entityId?: string): Promise<Fund[]> {
+  let filter = `organization_id=eq.${orgId}`;
+  if (entityId) filter += `&entity_id=eq.${encodeURIComponent(entityId)}`;
+  return pgrst<Fund[]>(`/funds?${filter}&select=${FUND_SELECT}&order=vintage.asc`);
+}
+
+export async function insertFund(orgId: string, f: Partial<Fund> & { id: string }): Promise<Fund> {
+  const out = await pgrst<Fund[]>(`/funds?select=${FUND_SELECT}`, {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(fundRow(orgId, f)),
+  });
+  return out[0];
+}
+
+export async function updateFund(
+  orgId: string,
+  id: string,
+  patch: Partial<Fund>
+): Promise<Fund> {
+  const out = await pgrst<Fund[]>(
+    `/funds?organization_id=eq.${orgId}&id=eq.${encodeURIComponent(id)}&select=${FUND_SELECT}`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(patch),
+    }
+  );
+  return out[0];
+}
+
+export async function deleteFund(orgId: string, id: string): Promise<void> {
+  await pgrst<void>(
+    `/funds?organization_id=eq.${orgId}&id=eq.${encodeURIComponent(id)}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function getSponsorById(orgId: string, id: string): Promise<SponsorBase | null> {
+  const rows = await pgrst<SponsorBase[]>(
+    `/sponsors?organization_id=eq.${orgId}&id=eq.${encodeURIComponent(id)}&select=${SPONSOR_SELECT}&limit=1`
+  );
+  return rows?.[0] ?? null;
+}
+
+export async function getFundById(orgId: string, id: string): Promise<Fund | null> {
+  const rows = await pgrst<Fund[]>(
+    `/funds?organization_id=eq.${orgId}&id=eq.${encodeURIComponent(id)}&select=${FUND_SELECT}&limit=1`
+  );
+  return rows?.[0] ?? null;
+}
+
+// ── Entities ────────────────────────────────────────────────────────────────
+
+export async function listEntities(orgId: string): Promise<Entity[]> {
+  return pgrst<Entity[]>(
+    `/entities?organization_id=eq.${orgId}&select=*&order=created_at.asc`
+  );
+}
+
+/**
+ * Guarantee the org has at least one entity. Funds/directs FK to `entities`,
+ * and the Add Direct drawer requires a non-empty entity — an org with zero
+ * entities was the silent-save trap (P0 #2). Returns the full entity list.
+ */
+export async function ensureDefaultEntity(orgId: string, orgName?: string): Promise<Entity[]> {
+  const existing = await listEntities(orgId);
+  if (existing.length > 0) return existing;
+  const row = {
+    id: `e-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`,
+    organization_id: orgId,
+    name: orgName?.trim() ? `${orgName.trim()} — Main Portfolio` : "Main Portfolio",
+    short: "MAIN",
+    nav: 0,
+  };
+  try {
+    return await pgrst<Entity[]>(`/entities?select=*`, {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(row),
+    });
+  } catch {
+    // Lost a race or a unique-short clash — re-read whatever exists now.
+    return listEntities(orgId);
+  }
 }
 
 // ── Segundo Cerebro graph node metadata ─────────────────────────────────────
@@ -309,20 +504,37 @@ export async function insertAudit(
 
 // ── Documents ────────────────────────────────────────────────────────────────
 
+// Full select assumes the storage/review migration (20260606) is applied. On a
+// DB still on the base documents schema, PostgREST 400s on the missing columns,
+// so we fall back to the minimal set — the Vault/Review/header badge still
+// populate (just without file preview / field-level review) instead of the
+// whole documents query silently returning []. This was the real reason the
+// Vault always showed "0 documents".
 const DOC_SELECT =
   "id,name,doc_type,fund,status,confidence,date,size,fields,extracted," +
   "sponsor_id,fund_id,direct_id,file_url,storage_path,pages,extracted_fields,vehicle,period_end";
+const DOC_SELECT_MIN =
+  "id,name,doc_type,fund,status,confidence,date,size,fields,extracted,sponsor_id,fund_id";
 
 export async function listDocuments(orgId: string, status?: string): Promise<Document[]> {
   let filter = `organization_id=eq.${orgId}`;
   if (status && status !== "all") filter += `&status=eq.${encodeURIComponent(status)}`;
-  return pgrst<Document[]>(`/documents?${filter}&select=${DOC_SELECT}&order=date.desc`);
+  try {
+    return await pgrst<Document[]>(`/documents?${filter}&select=${DOC_SELECT}&order=date.desc`);
+  } catch {
+    return pgrst<Document[]>(`/documents?${filter}&select=${DOC_SELECT_MIN}&order=date.desc`);
+  }
 }
 
 export async function getDocument(orgId: string, id: string): Promise<Document | null> {
-  const rows = await pgrst<Document[]>(
-    `/documents?organization_id=eq.${orgId}&id=eq.${encodeURIComponent(id)}&select=${DOC_SELECT}&limit=1`
-  );
+  const q = (sel: string) =>
+    `/documents?organization_id=eq.${orgId}&id=eq.${encodeURIComponent(id)}&select=${sel}&limit=1`;
+  let rows: Document[];
+  try {
+    rows = await pgrst<Document[]>(q(DOC_SELECT));
+  } catch {
+    rows = await pgrst<Document[]>(q(DOC_SELECT_MIN));
+  }
   return rows?.[0] ?? null;
 }
 

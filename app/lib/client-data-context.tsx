@@ -10,6 +10,7 @@ import {
 import { useRevalidator } from "react-router";
 import type {
   Sponsor,
+  SponsorBase,
   Fund,
   PortfolioCompany,
   DirectInvestment,
@@ -24,7 +25,10 @@ import type {
   GraphNodeMeta,
 } from "~/lib/types";
 import { DEFAULT_TAXONOMY } from "~/lib/taxonomy";
-import { SEED_SPONSORS, buildSeedFunds } from "~/lib/seed";
+import { computeSponsorAggregates } from "~/lib/portfolio";
+import { useToast } from "~/lib/toast-context";
+import { useLang } from "~/lib/lang-context";
+import { fetchWithRetry } from "~/lib/retry";
 
 /**
  * App-level store.
@@ -96,16 +100,35 @@ interface ClientData {
 
 const ClientDataContext = createContext<ClientData | null>(null);
 
-async function postData(payload: Record<string, unknown>): Promise<void> {
-  await fetch("/api/data", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+interface PostResult {
+  ok: boolean;
+  error?: string;
+  data?: any;
+}
+
+/** POST a mutation to `/api/data` with backoff retry. Never throws — returns a
+ *  result so callers can revert optimistic state + surface a toast on failure. */
+async function postData(payload: Record<string, unknown>): Promise<PostResult> {
+  try {
+    const res = await fetchWithRetry("/api/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json().catch(() => ({} as any));
+    if (!res.ok || json?.ok === false) {
+      return { ok: false, error: json?.error || `Request failed (${res.status})` };
+    }
+    return { ok: true, data: json };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export function ClientDataProvider({
   entities,
+  sponsors: serverSponsors,
+  funds: serverFunds,
   directInvestments: serverDirects,
   taxonomy: serverTaxonomy,
   auditLog: serverAudit,
@@ -114,6 +137,8 @@ export function ClientDataProvider({
   children,
 }: {
   entities: Entity[];
+  sponsors: SponsorBase[];
+  funds: Fund[];
   directInvestments: DirectInvestment[];
   taxonomy: TaxonomyLists;
   auditLog: AuditEntry[];
@@ -121,16 +146,15 @@ export function ClientDataProvider({
   graphNodeMeta: GraphNodeMeta[];
   children: ReactNode;
 }) {
+  void entities; // entities are consumed by EntityProvider, not the store.
   const revalidator = useRevalidator();
 
-  // Client-side merge layer (in-memory, seeded once).
-  const seededFunds = useMemo(() => buildSeedFunds(entities), [entities]);
-  const [sponsors, setSponsors] = useState<Sponsor[]>(SEED_SPONSORS);
-  const [funds, setFunds] = useState<Fund[]>(seededFunds);
-  const [companies, setCompanies] = useState<Record<string, PortfolioCompany[]>>({});
-
   // Supabase-backed slices — initialise from loader props, keep a local
-  // optimistic copy, and re-sync whenever the loader props change.
+  // optimistic copy, and re-sync whenever the loader props change (so a failed
+  // optimistic write reverts and a successful one is confirmed by the row).
+  const [sponsorsBase, setSponsors] = useState<SponsorBase[]>(serverSponsors);
+  const [funds, setFunds] = useState<Fund[]>(serverFunds);
+  const [companies, setCompanies] = useState<Record<string, PortfolioCompany[]>>({});
   const [directInvestments, setDirects] = useState<DirectInvestment[]>(serverDirects);
   const [taxonomy, setTaxonomy] = useState<TaxonomyLists>(serverTaxonomy ?? DEFAULT_TAXONOMY);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>(serverAudit);
@@ -138,13 +162,46 @@ export function ClientDataProvider({
   const [graphNodeMeta, setGraphMeta] = useState<GraphNodeMeta[]>(serverGraphMeta ?? []);
   const [team] = useState<TeamMember[]>(DEFAULT_TEAM);
 
+  useEffect(() => { setSponsors(serverSponsors); }, [serverSponsors]);
+  useEffect(() => { setFunds(serverFunds); }, [serverFunds]);
   useEffect(() => { setDirects(serverDirects); }, [serverDirects]);
   useEffect(() => { setTaxonomy(serverTaxonomy ?? DEFAULT_TAXONOMY); }, [serverTaxonomy]);
   useEffect(() => { setAuditLog(serverAudit); }, [serverAudit]);
   useEffect(() => { setDocuments(serverDocuments); }, [serverDocuments]);
   useEffect(() => { setGraphMeta(serverGraphMeta ?? []); }, [serverGraphMeta]);
 
+  // Sponsors expose aggregates DERIVED from the live funds, so the Sponsors
+  // page and the Portfolio Overview can never drift apart (QA #3).
+  const sponsors = useMemo(
+    () => computeSponsorAggregates(sponsorsBase, funds),
+    [sponsorsBase, funds]
+  );
+
   const refresh = useCallback(() => revalidator.revalidate(), [revalidator]);
+  const { toast } = useToast();
+  const { lang } = useLang();
+
+  /**
+   * Persist a mutation. Always re-syncs to server truth afterwards (so a failed
+   * optimistic update reverts on the next loader revalidation) and surfaces a
+   * toast on failure — no more silent saves. Pass `silent` for low-value writes
+   * (e.g. the audit log) that shouldn't nag the user if they blip.
+   */
+  const persist = useCallback(
+    async (payload: Record<string, unknown>, opts?: { silent?: boolean }): Promise<PostResult> => {
+      const r = await postData(payload);
+      if (!r.ok && !opts?.silent) {
+        const detail = r.error ? ` (${r.error})` : "";
+        toast(
+          lang === "es" ? `No se pudo guardar${detail}` : `Couldn't save${detail}`,
+          "error"
+        );
+      }
+      refresh();
+      return r;
+    },
+    [refresh, toast, lang]
+  );
 
   // ── audit ────────────────────────────────────────────────────────────
   const logAudit = useCallback((e: Omit<AuditEntry, "id" | "timestamp" | "user">) => {
@@ -155,39 +212,63 @@ export function ClientDataProvider({
       ...e,
     };
     setAuditLog((prev) => [entry, ...prev]); // optimistic
-    postData({ intent: "create-audit", entry: { ...e, user: CURRENT_USER } });
-  }, []);
+    persist({ intent: "create-audit", entry: { ...e, user: CURRENT_USER } }, { silent: true });
+  }, [persist]);
 
-  // ── funds / sponsors / companies (client-side) ─────────────────────────
-  const addSponsor = useCallback((s: Sponsor) => setSponsors((p) => [...p, s]), []);
-  const addFund = useCallback((f: Fund) => setFunds((p) => [...p, f]), []);
-  const updateFund = useCallback(
-    (id: string, patch: Partial<Fund>) => setFunds((p) => p.map((f) => (f.id === id ? { ...f, ...patch } : f))),
-    []
-  );
-  const deleteFund = useCallback((id: string) => setFunds((p) => p.filter((f) => f.id !== id)), []);
+  // ── funds / sponsors / companies (Supabase-backed) ─────────────────────
+  const addSponsor = useCallback((s: Sponsor) => {
+    // Persist the base columns optimistically; aggregates derive from funds.
+    const base: SponsorBase = {
+      id: s.id,
+      name: s.name,
+      initials: s.initials,
+      country: s.country,
+      color: s.color,
+      asset_classes: s.asset_classes ?? [],
+    };
+    setSponsors((p) => [...p, base]);
+    persist({ intent: "create-sponsor", sponsor: base });
+  }, [persist]);
+
+  const addFund = useCallback((f: Fund) => {
+    setFunds((p) => [...p, f]);
+    persist({ intent: "create-fund", fund: f });
+  }, [persist]);
+
+  const updateFund = useCallback((id: string, patch: Partial<Fund>) => {
+    setFunds((p) => p.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+    persist({ intent: "update-fund", id, patch });
+  }, [persist]);
+
+  const deleteFund = useCallback((id: string) => {
+    setFunds((p) => p.filter((f) => f.id !== id));
+    persist({ intent: "delete-fund", id });
+  }, [persist]);
+
   const addCompany = useCallback((fundId: string, c: PortfolioCompany) => {
     setCompanies((prev) => ({ ...prev, [fundId]: [...(prev[fundId] || []), c] }));
   }, []);
+
   const updateFundEntity = useCallback((fundId: string, newEntityId: string) => {
     setFunds((prev) => prev.map((f) => (f.id === fundId ? { ...f, entity_id: newEntityId } : f)));
-  }, []);
+    persist({ intent: "update-fund", id: fundId, patch: { entity_id: newEntityId } });
+  }, [persist]);
 
   // ── direct investments (Supabase-backed) ───────────────────────────────
   const addDirect = useCallback((d: DirectInvestment) => {
     setDirects((p) => [...p, d]); // optimistic
-    postData({ intent: "create-direct", direct: d }).then(() => refresh());
-  }, [refresh]);
+    persist({ intent: "create-direct", direct: d });
+  }, [persist]);
 
   const updateDirect = useCallback((id: string, patch: Partial<DirectInvestment>) => {
     setDirects((p) => p.map((d) => (d.id === id ? { ...d, ...patch } : d)));
-    postData({ intent: "update-direct", id, patch }).then(() => refresh());
-  }, [refresh]);
+    persist({ intent: "update-direct", id, patch });
+  }, [persist]);
 
   const deleteDirect = useCallback((id: string) => {
     setDirects((p) => p.filter((d) => d.id !== id));
-    postData({ intent: "delete-direct", id }).then(() => refresh());
-  }, [refresh]);
+    persist({ intent: "delete-direct", id });
+  }, [persist]);
 
   const addValuation = useCallback((directId: string, entry: ValuationEntry) => {
     setDirects((prev) =>
@@ -204,8 +285,8 @@ export function ClientDataProvider({
         };
       })
     );
-    postData({ intent: "add-valuation", id: directId, entry }).then(() => refresh());
-  }, [refresh]);
+    persist({ intent: "add-valuation", id: directId, entry });
+  }, [persist]);
 
   const getDirect = useCallback(
     (id: string) => directInvestments.find((d) => d.id === id),
@@ -215,8 +296,8 @@ export function ClientDataProvider({
   // ── taxonomy (Supabase-backed; persist the whole lists object) ─────────
   const persistTaxonomy = useCallback((next: TaxonomyLists) => {
     setTaxonomy(next); // optimistic
-    postData({ intent: "put-taxonomy", lists: next }).then(() => refresh());
-  }, [refresh]);
+    persist({ intent: "put-taxonomy", lists: next });
+  }, [persist]);
 
   const addTaxonomyItem = useCallback((list: keyof TaxonomyLists, value: string, assetClass?: string) => {
     setTaxonomy((prev) => {
@@ -230,10 +311,10 @@ export function ClientDataProvider({
           next = { ...prev, [list]: [...(arr as string[]), value] } as TaxonomyLists;
         }
       }
-      if (next !== prev) postData({ intent: "put-taxonomy", lists: next }).then(() => refresh());
+      if (next !== prev) persist({ intent: "put-taxonomy", lists: next });
       return next;
     });
-  }, [refresh]);
+  }, [persist]);
 
   const editTaxonomyItem = useCallback(
     (list: keyof TaxonomyLists, oldValue: string, newValue: string, assetClass?: string) => {
@@ -245,11 +326,11 @@ export function ClientDataProvider({
         } else if (Array.isArray(prev[list])) {
           next = { ...prev, [list]: (prev[list] as string[]).map((v) => (v === oldValue ? newValue : v)) } as TaxonomyLists;
         }
-        if (next !== prev) postData({ intent: "put-taxonomy", lists: next }).then(() => refresh());
+        if (next !== prev) persist({ intent: "put-taxonomy", lists: next });
         return next;
       });
     },
-    [refresh]
+    [persist]
   );
 
   const deleteTaxonomyItem = useCallback(
@@ -262,11 +343,11 @@ export function ClientDataProvider({
         } else if (Array.isArray(prev[list])) {
           next = { ...prev, [list]: (prev[list] as string[]).filter((v) => v !== value) } as TaxonomyLists;
         }
-        if (next !== prev) postData({ intent: "put-taxonomy", lists: next }).then(() => refresh());
+        if (next !== prev) persist({ intent: "put-taxonomy", lists: next });
         return next;
       });
     },
-    [refresh]
+    [persist]
   );
 
   // persistTaxonomy retained for potential bulk use
@@ -275,13 +356,13 @@ export function ClientDataProvider({
   // ── documents (Supabase-backed) ────────────────────────────────────────
   const addDocument = useCallback((d: Document) => {
     setDocuments((p) => [d, ...p]); // optimistic
-    postData({ intent: "create-document", document: d }).then(() => refresh());
-  }, [refresh]);
+    persist({ intent: "create-document", document: d });
+  }, [persist]);
 
   const updateDocumentStatus = useCallback((id: string, status: string) => {
     setDocuments((p) => p.map((d) => (d.id === id ? { ...d, status } : d)));
-    postData({ intent: "update-document-status", id, status }).then(() => refresh());
-  }, [refresh]);
+    persist({ intent: "update-document-status", id, status });
+  }, [persist]);
 
   const approveDocField = useCallback((id: string, fieldId: string, approved: boolean) => {
     setDocuments((prev) =>
@@ -294,8 +375,8 @@ export function ClientDataProvider({
         return { ...d, extracted_fields: fields, extracted };
       })
     );
-    postData({ intent: "approve-doc-field", id, fieldId, approved }).then(() => refresh());
-  }, [refresh]);
+    persist({ intent: "approve-doc-field", id, fieldId, approved });
+  }, [persist]);
 
   const getDocument = useCallback(
     (id: string) => documents.find((d) => d.id === id),
@@ -318,8 +399,8 @@ export function ClientDataProvider({
         ? [...prev.slice(0, idx), { ...prev[idx], ...meta }, ...prev.slice(idx + 1)]
         : [...prev, meta];
     });
-    postData({ intent: "upsert-graph-meta", meta }).then(() => refresh());
-  }, [refresh]);
+    persist({ intent: "upsert-graph-meta", meta }, { silent: true });
+  }, [persist]);
 
   const value: ClientData = {
     sponsors, funds, companies, directInvestments, taxonomy, team, auditLog, documents,

@@ -10,9 +10,19 @@ import { ToastProvider } from "~/lib/toast-context";
 import { DocViewerProvider } from "~/lib/doc-viewer-context";
 import { useT } from "~/lib/use-t";
 import { api, type UserPublic } from "~/lib/api.server";
-import { resolveOrgId, listDirects, getTaxonomy, listAudit, listDocuments, listGraphMeta } from "~/lib/supabase.server";
+import {
+  resolveOrgId,
+  listSponsors,
+  listFunds,
+  ensureDefaultEntity,
+  listDirects,
+  getTaxonomy,
+  listAudit,
+  listDocuments,
+  listGraphMeta,
+} from "~/lib/supabase.server";
 import { DEFAULT_TAXONOMY } from "~/lib/taxonomy";
-import type { Entity, Organization, DirectInvestment, TaxonomyLists, AuditEntry, Document, GraphNodeMeta } from "~/lib/types";
+import type { Entity, Organization, DirectInvestment, TaxonomyLists, AuditEntry, Document, GraphNodeMeta, Fund, SponsorBase } from "~/lib/types";
 
 export async function loader({ request }: { request: Request }) {
   const session = getSessionFromRequest(request);
@@ -42,30 +52,17 @@ export async function loader({ request }: { request: Request }) {
     throw redirect("/onboarding");
   }
 
-  let entities: Entity[] = [];
-  try {
-    entities = await api.getEntities(cookie);
-  } catch {
-    // Backend may not be running — degrade gracefully
-  }
-
-  // Stale-cookie cleanup: if the browser is carrying an `atlas-entity`
-  // cookie pointing at an id that no longer exists (e.g. surviving a data
-  // wipe with old IDs), treat it as null for this render AND clear the
-  // cookie so subsequent navigations don't re-trigger the bug. Without
-  // this, the entity-map's filter returns [] and the user sees only the
-  // root card with no entities below it.
-  const cookieEntityId = getEntityFromRequest(request);
-  const stale =
-    cookieEntityId !== null && !entities.some((e) => e.id === cookieEntityId);
-  const selectedEntityId = stale ? null : cookieEntityId;
-
   const theme = getThemeFromRequest(request);
   const lang = getLangFromRequest(request);
 
-  // Supabase-backed modules (direct investments, taxonomy, audit). Resolved
-  // resiliently so the app still renders if the migration hasn't been run
-  // yet (tables missing) or Supabase is unreachable.
+  // Sponsors / funds / entities / directs / taxonomy / audit / documents all
+  // live in Supabase now. The flaky Fly backend is out of the data hot path
+  // (it only served auth above). Every read degrades to an empty default so a
+  // Supabase blip renders an empty — not broken — app. Loaded once here and
+  // shared through the store, so individual screens don't re-fan-out (QA #1).
+  let entities: Entity[] = [];
+  let sponsors: SponsorBase[] = [];
+  let funds: Fund[] = [];
   let directInvestments: DirectInvestment[] = [];
   let taxonomy: TaxonomyLists = DEFAULT_TAXONOMY;
   let auditLog: AuditEntry[] = [];
@@ -73,19 +70,33 @@ export async function loader({ request }: { request: Request }) {
   let graphNodeMeta: GraphNodeMeta[] = [];
   try {
     const orgId = await resolveOrgId(request);
-    [directInvestments, taxonomy, auditLog, documents, graphNodeMeta] = await Promise.all([
-      listDirects(orgId).catch(() => []),
-      getTaxonomy(orgId).catch(() => DEFAULT_TAXONOMY),
-      listAudit(orgId).catch(() => []),
-      listDocuments(orgId).catch(() => []),
-      listGraphMeta(orgId).catch(() => []),
-    ]);
+    // Guarantee at least one entity so funds/directs always have a home and the
+    // Add Direct drawer is never silently blocked by an empty entity (P0 #2).
+    entities = await ensureDefaultEntity(orgId, organization.name);
+    [sponsors, funds, directInvestments, taxonomy, auditLog, documents, graphNodeMeta] =
+      await Promise.all([
+        listSponsors(orgId).catch(() => []),
+        listFunds(orgId).catch(() => []),
+        listDirects(orgId).catch(() => []),
+        getTaxonomy(orgId).catch(() => DEFAULT_TAXONOMY),
+        listAudit(orgId).catch(() => []),
+        listDocuments(orgId).catch(() => []),
+        listGraphMeta(orgId).catch(() => []),
+      ]);
   } catch {
     // Supabase not configured / reachable — degrade to client defaults.
   }
 
+  // Stale-cookie cleanup: if the browser carries an `atlas-entity` cookie
+  // pointing at an id that no longer exists, treat it as null for this render
+  // AND clear the cookie so later navigations don't re-trigger an empty filter.
+  const cookieEntityId = getEntityFromRequest(request);
+  const stale =
+    cookieEntityId !== null && !entities.some((e) => e.id === cookieEntityId);
+  const selectedEntityId = stale ? null : cookieEntityId;
+
   const data = {
-    entities, organization, user, selectedEntityId, theme, lang,
+    entities, sponsors, funds, organization, user, selectedEntityId, theme, lang,
     directInvestments, taxonomy, auditLog, documents, graphNodeMeta,
   };
 
@@ -99,10 +110,12 @@ export async function loader({ request }: { request: Request }) {
 
 export default function AppLayout() {
   const {
-    entities, organization, user, selectedEntityId, theme, lang,
+    entities, sponsors, funds, organization, user, selectedEntityId, theme, lang,
     directInvestments, taxonomy, auditLog, documents, graphNodeMeta,
   } = useLoaderData<{
     entities: Entity[];
+    sponsors: SponsorBase[];
+    funds: Fund[];
     organization: Organization;
     user: UserPublic;
     selectedEntityId: string | null;
@@ -120,15 +133,17 @@ export default function AppLayout() {
     <ThemeProvider theme={theme}>
     <LangProvider lang={lang}>
     <EntityProvider entities={entities} selectedEntityId={selectedEntityId}>
+    <ToastProvider>
     <ClientDataProvider
       entities={entities}
+      sponsors={sponsors}
+      funds={funds}
       directInvestments={directInvestments}
       taxonomy={taxonomy}
       auditLog={auditLog}
       documents={documents}
       graphNodeMeta={graphNodeMeta}
     >
-    <ToastProvider>
     <DocViewerProvider>
       <div className="w-full h-screen flex flex-col overflow-hidden">
         <TopBar organizationName={organization.name} />
@@ -139,8 +154,8 @@ export default function AppLayout() {
         <Footer />
       </div>
     </DocViewerProvider>
-    </ToastProvider>
     </ClientDataProvider>
+    </ToastProvider>
     </EntityProvider>
     </LangProvider>
     </ThemeProvider>

@@ -1,7 +1,8 @@
-import { useRevalidator } from "react-router";
+import { useRevalidator, Link } from "react-router";
 import { useEntity } from "~/lib/entity-context";
 import { useTheme } from "~/lib/theme-context";
 import { useLang } from "~/lib/lang-context";
+import { useClientData } from "~/lib/client-data-context";
 import { useT } from "~/lib/use-t";
 
 interface TopBarProps {
@@ -14,6 +15,10 @@ export function TopBar({ organizationName }: TopBarProps) {
   const { lang } = useLang();
   const t = useT();
   const revalidator = useRevalidator();
+  // Drive the header badge from the same documents query the Vault/Review use,
+  // so it can never disagree with them (QA #8). Hidden entirely when zero.
+  const { documents } = useClientData();
+  const needsReview = documents.filter((d) => d.status === "Needs Review").length;
 
   function selectEntity(id: string | null) {
     if (id) {
@@ -98,11 +103,20 @@ export function TopBar({ organizationName }: TopBarProps) {
             </svg>
           </span>
         </button>
-        <div className="w-px h-4 bg-atlas-border" />
-        <div className="w-2 h-2 rounded-full bg-atlas-orange shadow-[0_0_6px_#FFB347]" />
-        <span className="text-[11px] text-atlas-orange font-semibold">
-          {t.topbar.reviewAlert}
-        </span>
+        {needsReview > 0 && (
+          <>
+            <div className="w-px h-4 bg-atlas-border" />
+            <Link
+              to="/review"
+              className="flex items-center gap-1.5 no-underline hover:opacity-80 transition-opacity"
+            >
+              <div className="w-2 h-2 rounded-full bg-atlas-orange shadow-[0_0_6px_#FFB347]" />
+              <span className="text-[11px] text-atlas-orange font-semibold">
+                {t.topbar.reviewAlert(needsReview)}
+              </span>
+            </Link>
+          </>
+        )}
         <div className="w-px h-4 bg-atlas-border" />
         <span className="text-[11px] text-atlas-gray3 font-mono">{dateStr}</span>
       </div>

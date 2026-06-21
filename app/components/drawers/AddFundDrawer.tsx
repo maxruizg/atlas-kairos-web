@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { Drawer } from "~/components/ui/Drawer";
 import { useEntity } from "~/lib/entity-context";
 import { useToast } from "~/lib/toast-context";
+import { useLang } from "~/lib/lang-context";
 import { useClientData } from "~/lib/client-data-context";
 import { useGuard } from "~/lib/use-permissions";
 import { strategiesFor } from "~/lib/taxonomy";
@@ -21,16 +22,22 @@ import {
 interface Props {
   open: boolean;
   onClose: () => void;
-  sponsorId: string;
+  /** When provided (from a Sponsor detail page) the fund is attached to that
+   *  sponsor. When omitted (e.g. from the Sponsors list / Portfolio) the user
+   *  picks the sponsor inside the drawer. */
+  sponsorId?: string;
 }
 
 const CURRENT_YEAR = 2026;
+
+/** Strip thousands separators / spaces so "25,000,000" parses as a number. */
+const clean = (s: string) => String(s).replace(/[,\s]/g, "");
 
 /** Validate a numeric string: empty is OK, otherwise must be a number and
  *  (unless allowNegative) non-negative. Returns an error key or null. */
 function numError(raw: string, allowNegative: boolean): "invalid" | null {
   if (raw.trim() === "") return null;
-  const n = Number(raw);
+  const n = Number(clean(raw));
   if (Number.isNaN(n)) return "invalid";
   if (!allowNegative && n < 0) return "invalid";
   return null;
@@ -39,12 +46,18 @@ function numError(raw: string, allowNegative: boolean): "invalid" | null {
 export function AddFundDrawer({ open, onClose, sponsorId }: Props) {
   const { entities } = useEntity();
   const { toast } = useToast();
+  const { lang } = useLang();
   const t = useT();
   const td = t.drawers;
-  const { taxonomy, addFund, logAudit } = useClientData();
+  const { taxonomy, sponsors, addFund, logAudit } = useClientData();
   const guard = useGuard();
 
   const firstFieldRef = useRef<HTMLInputElement>(null);
+
+  // Sponsor: fixed by the caller (Sponsor detail), or picked here when the
+  // drawer is opened from a list/portfolio view.
+  const [sponsorPick, setSponsorPick] = useState(sponsorId ?? sponsors[0]?.id ?? "");
+  const effectiveSponsorId = sponsorId ?? sponsorPick;
 
   // Classification (dropdowns)
   const [assetClass, setAssetClass] = useState(taxonomy.assetClasses[0] || "");
@@ -99,7 +112,7 @@ export function AddFundDrawer({ open, onClose, sponsorId }: Props) {
     }
   }, [open]);
 
-  const num = (s: string) => parseFloat(s) || 0;
+  const num = (s: string) => parseFloat(clean(s)) || 0;
   const paidInNum = num(paidIn);
   const commitmentNum = num(commitment);
   const navNum = num(nav);
@@ -138,7 +151,7 @@ export function AddFundDrawer({ open, onClose, sponsorId }: Props) {
 
   const build = (): Fund => ({
     id: `f-${crypto.randomUUID().slice(0, 8)}`,
-    sponsor_id: sponsorId,
+    sponsor_id: effectiveSponsorId,
     entity_id: entityId,
     name: name.trim(),
     vintage: parseInt(vintage) || CURRENT_YEAR,
@@ -171,7 +184,26 @@ export function AddFundDrawer({ open, onClose, sponsorId }: Props) {
 
   const commit = (keepOpen: boolean) => {
     setSubmitted(true);
-    if (!name.trim() || !vintage.trim() || !entityId || hasErrors) return;
+    if (!name.trim() || !vintage.trim() || !entityId || !effectiveSponsorId || hasErrors) {
+      // Never fail silently — surface exactly what's blocking the save.
+      const msg = !effectiveSponsorId
+        ? lang === "es"
+          ? "Selecciona un sponsor."
+          : "Select a sponsor."
+        : !name.trim() || !vintage.trim()
+        ? td.requiredField
+        : !entityId
+        ? entities.length === 0
+          ? lang === "es"
+            ? "Crea una entidad antes de agregar un fondo."
+            : "Create an entity before adding a fund."
+          : td.requiredField
+        : lang === "es"
+        ? "Revisa los campos marcados en rojo."
+        : "Check the fields highlighted in red.";
+      toast(msg, "warning");
+      return;
+    }
     guard("fund.add", () => {
       const fund = build();
       addFund(fund);
@@ -198,6 +230,25 @@ export function AddFundDrawer({ open, onClose, sponsorId }: Props) {
       <div className="flex flex-col">
         <div className="mb-3"><HelpFootnote tutorial="add-fund" /></div>
         <Section>{td.secIdentity}</Section>
+
+        {!sponsorId && (
+          <>
+            <Label required>{lang === "es" ? "Patrocinador" : "Sponsor"}</Label>
+            <SelectField
+              value={sponsorPick}
+              onChange={setSponsorPick}
+              options={sponsors.map((s) => s.id)}
+              labels={sponsors.map((s) => s.name)}
+              placeholder={
+                sponsors.length === 0
+                  ? lang === "es"
+                    ? "Agrega un sponsor primero"
+                    : "Add a sponsor first"
+                  : undefined
+              }
+            />
+          </>
+        )}
 
         <Label required>{td.fundName}</Label>
         <TextField ref={firstFieldRef} value={name} onChange={setName} error={errs.name} maxLength={120} />

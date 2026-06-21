@@ -11,6 +11,12 @@ import {
   getDocument,
   setDocumentFields,
   upsertGraphMeta,
+  insertSponsor,
+  updateSponsor,
+  deleteSponsor,
+  insertFund,
+  updateFund,
+  deleteFund,
 } from "~/lib/supabase.server";
 
 /**
@@ -47,6 +53,30 @@ export async function action({ request }: { request: Request }) {
       }
       case "delete-direct": {
         await deleteDirect(orgId, payload.id);
+        return Response.json({ ok: true });
+      }
+      case "create-sponsor": {
+        const created = await insertSponsor(orgId, payload.sponsor);
+        return Response.json({ ok: true, sponsor: created });
+      }
+      case "update-sponsor": {
+        const updated = await updateSponsor(orgId, payload.id, payload.patch);
+        return Response.json({ ok: true, sponsor: updated });
+      }
+      case "delete-sponsor": {
+        await deleteSponsor(orgId, payload.id);
+        return Response.json({ ok: true });
+      }
+      case "create-fund": {
+        const created = await insertFund(orgId, payload.fund);
+        return Response.json({ ok: true, fund: created });
+      }
+      case "update-fund": {
+        const updated = await updateFund(orgId, payload.id, payload.patch);
+        return Response.json({ ok: true, fund: updated });
+      }
+      case "delete-fund": {
+        await deleteFund(orgId, payload.id);
         return Response.json({ ok: true });
       }
       case "add-valuation": {

@@ -180,6 +180,13 @@ export interface Sponsor {
   company_count: number;
 }
 
+/** The persisted columns of a sponsor; the aggregate metrics above are derived
+ *  from the sponsor's funds at read time (see `lib/portfolio.ts`). */
+export type SponsorBase = Pick<
+  Sponsor,
+  "id" | "name" | "initials" | "country" | "color" | "asset_classes"
+>;
+
 /** Subjective traffic-light risk rating used across funds and directs. */
 export type RiskRating = "green" | "yellow" | "red";
 

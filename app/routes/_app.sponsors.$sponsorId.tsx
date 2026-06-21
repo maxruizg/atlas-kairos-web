@@ -1,11 +1,8 @@
 import { useState, useMemo } from "react";
-import { useLoaderData, Link } from "react-router";
-import { api } from "~/lib/api.server";
-import { getEntityFromRequest } from "~/lib/entity-context";
-import { useMergedFunds } from "~/lib/use-merged-data";
+import { Link, useParams } from "react-router";
 import { useClientData } from "~/lib/client-data-context";
 import { useDocViewer } from "~/lib/doc-viewer-context";
-import type { Sponsor, Fund, Document } from "~/lib/types";
+import type { Document } from "~/lib/types";
 import { formatCurrency, formatMultiplier, formatIrr, irrColor } from "~/lib/utils";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
 import { StatusBadge } from "~/components/ui/StatusBadge";
@@ -13,46 +10,6 @@ import { AddFundDrawer } from "~/components/drawers/AddFundDrawer";
 import { useToast } from "~/lib/toast-context";
 import { useCan } from "~/lib/use-permissions";
 import { useT } from "~/lib/use-t";
-
-export async function loader({ request, params }: { request: Request; params: { sponsorId: string } }) {
-  const entityId = getEntityFromRequest(request) || undefined;
-  const cookie = request.headers.get("cookie") || undefined;
-  const [sponsor, funds] = await Promise.all([
-    api.getSponsor(params.sponsorId, cookie),
-    api.getFunds(entityId, params.sponsorId, cookie),
-  ]);
-  return { sponsor, funds };
-}
-
-export async function action({
-  request,
-  params,
-}: {
-  request: Request;
-  params: { sponsorId: string };
-}) {
-  const form = await request.formData();
-  const intent = form.get("intent");
-  const cookie = request.headers.get("cookie") || undefined;
-
-  if (intent === "create-fund") {
-    const payload = JSON.parse(String(form.get("fund") || "{}"));
-    payload.sponsor_id = params.sponsorId;
-    const result = await api.createFund(payload, cookie);
-    if (!result.ok) return { intent, ok: false, error: result.error };
-    return { intent, ok: true };
-  }
-
-  if (intent === "delete-fund") {
-    const id = String(form.get("id") || "");
-    if (!id) return { intent, ok: false, error: "Missing fund id" };
-    const result = await api.deleteFund(id, cookie);
-    if (!result.ok) return { intent, ok: false, error: result.error };
-    return { intent, ok: true };
-  }
-
-  return { intent: "unknown", ok: false, error: "Unknown intent" };
-}
 
 const DOC_TYPES = ["All", "Capital Account Statement", "Quarterly Report", "Annual Report", "Financial Statement"];
 
@@ -63,12 +20,12 @@ function confidenceColor(c: number): string {
 }
 
 export default function SponsorDetail() {
-  const { sponsor, funds: loaderFunds } = useLoaderData<{
-    sponsor: Sponsor;
-    funds: Fund[];
-  }>();
-  const funds = useMergedFunds(loaderFunds);
-  const { documents: allDocs } = useClientData();
+  // Sponsor + its funds come from the shared store (Supabase-backed), so a
+  // newly-added fund shows here and in the Portfolio Overview at once (QA #3).
+  const { sponsorId } = useParams();
+  const { sponsors, funds: allFunds, documents: allDocs } = useClientData();
+  const sponsor = useMemo(() => sponsors.find((s) => s.id === sponsorId), [sponsors, sponsorId]);
+  const funds = useMemo(() => allFunds.filter((f) => f.sponsor_id === sponsorId), [allFunds, sponsorId]);
   const { openDocObject } = useDocViewer();
   const t = useT();
   const sd = t.sponsorDetail;
@@ -93,8 +50,8 @@ export default function SponsorDetail() {
   const totalCompanies = funds.reduce((s, f) => s + f.companies.length, 0);
 
   const sponsorDocs = useMemo(() => {
-    return allDocs.filter((d) => d.sponsor_id === sponsor.id);
-  }, [allDocs, sponsor.id]);
+    return allDocs.filter((d) => d.sponsor_id === (sponsor?.id ?? ""));
+  }, [allDocs, sponsor?.id]);
 
   const filteredDocs = useMemo(() => {
     if (docTypeFilter === "All") return sponsorDocs;
@@ -106,6 +63,19 @@ export default function SponsorDetail() {
     for (const dt of DOC_TYPES.slice(1)) counts[dt] = sponsorDocs.filter((d) => d.doc_type === dt).length;
     return counts;
   }, [sponsorDocs]);
+
+  if (!sponsor) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-sm text-atlas-gray3">{t.sponsorDetail.notFound}</div>
+          <Link to="/sponsors" className="inline-block mt-3 text-atlas-purple text-sm no-underline">
+            ← {t.sidebar.sponsors}
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-y-auto p-7 flex flex-col gap-6">

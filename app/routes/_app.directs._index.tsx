@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
-import { useLoaderData, useNavigate } from "react-router";
-import { api } from "~/lib/api.server";
-import { getEntityFromRequest, useEntity } from "~/lib/entity-context";
+import { useNavigate } from "react-router";
+import { useEntity } from "~/lib/entity-context";
 import { useClientData } from "~/lib/client-data-context";
 import { useMergedFunds } from "~/lib/use-merged-data";
 import { useCan } from "~/lib/use-permissions";
@@ -10,23 +9,11 @@ import { formatCurrency, formatMultiplier } from "~/lib/utils";
 import { InvestmentCounter } from "~/components/ui/InvestmentCounter";
 import { RiskDot } from "~/components/drawers/form-fields";
 import { AddDirectInvestmentDrawer } from "~/components/drawers/AddDirectInvestmentDrawer";
-import type { Fund } from "~/lib/types";
-
-export async function loader({ request }: { request: Request }) {
-  const entityId = getEntityFromRequest(request) || undefined;
-  const cookie = request.headers.get("cookie") || undefined;
-  let funds: Fund[] = [];
-  try {
-    funds = await api.getFunds(entityId, undefined, cookie);
-  } catch {
-    /* backend down — degrade */
-  }
-  return { funds };
-}
 
 export default function DirectsIndex() {
-  const { funds: loaderFunds } = useLoaderData<{ funds: Fund[] }>();
-  const funds = useMergedFunds(loaderFunds);
+  // Funds (for the counter) + directs both come from the shared store now, so
+  // the /directs.data loader no longer hits the flaky Fly backend (QA #1).
+  const funds = useMergedFunds();
   const { directInvestments } = useClientData();
   const { selectedEntityId, entities } = useEntity();
   const navigate = useNavigate();

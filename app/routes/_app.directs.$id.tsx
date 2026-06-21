@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
-import { useParams, useLoaderData, Link } from "react-router";
-import { api } from "~/lib/api.server";
+import { useParams, Link } from "react-router";
 import { useClientData } from "~/lib/client-data-context";
 import { useDocViewer } from "~/lib/doc-viewer-context";
 import { HelpFootnote } from "~/components/ui/HelpFootnote";
@@ -15,19 +14,6 @@ import {
   buildDirectJCurve,
 } from "~/components/charts/EquityDeploymentChart";
 import { PerformanceIndicator } from "~/components/charts/PerformanceIndicator";
-import type { Fund } from "~/lib/types";
-
-export async function loader({ request }: { request: Request }) {
-  // Funds (NAV) are needed only for portfolio/asset-class denominators.
-  const cookie = request.headers.get("cookie") || undefined;
-  let funds: Fund[] = [];
-  try {
-    funds = await api.getFunds(undefined, undefined, cookie);
-  } catch {
-    /* degrade */
-  }
-  return { funds };
-}
 
 function Metric({ label, value, sub, valueClass }: { label: string; value: string; sub?: string; valueClass?: string }) {
   return (
@@ -41,8 +27,8 @@ function Metric({ label, value, sub, valueClass }: { label: string; value: strin
 
 export default function DirectDetail() {
   const { id } = useParams();
-  const { funds } = useLoaderData<{ funds: Fund[] }>();
-  const { directInvestments, getDirect, addValuation, logAudit, documents } = useClientData();
+  // Funds (for portfolio/asset-class denominators) come from the shared store.
+  const { funds, directInvestments, getDirect, addValuation, logAudit, documents } = useClientData();
   const { openDocObject } = useDocViewer();
   const { entities } = useEntity();
   const { toast } = useToast();

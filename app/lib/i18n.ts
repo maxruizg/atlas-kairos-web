@@ -15,7 +15,8 @@ const translations = {
     },
     topbar: {
       all: "All",
-      reviewAlert: "1 document needs review",
+      reviewAlert: (n: number) =>
+        `${n} document${n === 1 ? "" : "s"} ${n === 1 ? "needs" : "need"} review`,
       lightMode: "Switch to light mode",
       darkMode: "Switch to dark mode",
     },
@@ -161,6 +162,7 @@ const translations = {
       fundsTitle: "Funds",
       paidIn: "Paid-In",
       pctCalled: "% Called",
+      notFound: "Sponsor not found.",
     },
     fundDetail: {
       grossIrr: "Gross IRR",
@@ -624,7 +626,8 @@ const translations = {
     },
     topbar: {
       all: "Todos",
-      reviewAlert: "1 documento necesita revisi\u00F3n",
+      reviewAlert: (n: number) =>
+        `${n} documento${n === 1 ? "" : "s"} ${n === 1 ? "necesita" : "necesitan"} revisi\u00F3n`,
       lightMode: "Cambiar a modo claro",
       darkMode: "Cambiar a modo oscuro",
     },
@@ -768,6 +771,7 @@ const translations = {
       fundsTitle: "Fondos",
       paidIn: "Invertido",
       pctCalled: "% Llamado",
+      notFound: "Sponsor no encontrado.",
     },
     fundDetail: {
       grossIrr: "TIR Bruta",

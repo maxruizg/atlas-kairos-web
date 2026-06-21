@@ -1,37 +1,31 @@
-import { useState, useEffect } from "react";
-import { useFetcher } from "react-router";
+import { useState } from "react";
 import { Drawer } from "~/components/ui/Drawer";
 import { useToast } from "~/lib/toast-context";
+import { useClientData } from "~/lib/client-data-context";
+import { useGuard } from "~/lib/use-permissions";
 import { useT } from "~/lib/use-t";
+import type { Sponsor } from "~/lib/types";
 
 const COLOR_SWATCHES = ["#8B7BD8", "#4DA8FF", "#00E5A0", "#FFB347", "#FF5C5C", "#00D4FF"];
-const ASSET_CLASS_OPTIONS = ["Venture Capital", "Private Equity", "Real Assets", "Direct"];
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-interface ActionResult {
-  intent?: string;
-  ok?: boolean;
-  error?: string;
-}
-
 export function AddSponsorDrawer({ open, onClose }: Props) {
-  const fetcher = useFetcher<ActionResult>();
   const { toast } = useToast();
   const t = useT();
   const td = t.drawers;
+  // Asset classes come from the single taxonomy source of truth (QA #5) and are
+  // persisted on the sponsor (QA #4) via the Supabase-backed store.
+  const { taxonomy, addSponsor, logAudit } = useClientData();
+  const guard = useGuard();
 
   const [name, setName] = useState("");
   const [initials, setInitials] = useState("");
   const [country, setCountry] = useState("");
   const [assetClasses, setAssetClasses] = useState<string[]>([]);
-  const [overview, setOverview] = useState("");
-  const [website, setWebsite] = useState("");
-  const [contactName, setContactName] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
   const [color, setColor] = useState(COLOR_SWATCHES[0]);
 
   const deriveInitials = (val: string) => {
@@ -52,39 +46,48 @@ export function AddSponsorDrawer({ open, onClose }: Props) {
     );
   };
 
-  const isSubmitting = fetcher.state !== "idle";
-
-  const handleSubmit = () => {
-    if (!name.trim() || isSubmitting) return;
-    fetcher.submit(
-      {
-        intent: "create-sponsor",
-        name: name.trim(),
-        initials: (initials || deriveInitials(name)).slice(0, 4),
-        country: country || "N/A",
-        color,
-      },
-      { method: "post", action: "/sponsors" }
-    );
-  };
-
-  // Close + reset only after the action confirms success.
-  useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data?.ok) {
-      toast(td.sponsorAdded, "success");
-      resetAndClose();
-    }
-    if (fetcher.state === "idle" && fetcher.data?.error) {
-      toast(fetcher.data.error, "warning");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetcher.state, fetcher.data]);
-
   const resetAndClose = () => {
-    setName(""); setInitials(""); setCountry(""); setAssetClasses([]);
-    setOverview(""); setWebsite(""); setContactName(""); setContactEmail("");
+    setName("");
+    setInitials("");
+    setCountry("");
+    setAssetClasses([]);
     setColor(COLOR_SWATCHES[0]);
     onClose();
+  };
+
+  const handleSubmit = () => {
+    // Never fail silently — tell the user what's missing.
+    if (!name.trim()) {
+      toast(td.requiredField, "warning");
+      return;
+    }
+    guard("fund.add", () => {
+      const sponsor: Sponsor = {
+        id: `s-${crypto.randomUUID().slice(0, 8)}`,
+        name: name.trim(),
+        initials: (initials || deriveInitials(name)).slice(0, 4).toUpperCase(),
+        country: country.trim() || "N/A",
+        color,
+        asset_classes: assetClasses,
+        // Aggregates derive from this sponsor's funds (none yet).
+        fund_count: 0,
+        total_nav: 0,
+        total_commitment: 0,
+        tvpi: 0,
+        net_irr: 0,
+        company_count: 0,
+      };
+      addSponsor(sponsor);
+      logAudit({
+        action: "create",
+        entity: sponsor.name,
+        field: "sponsor",
+        new_value: sponsor.asset_classes.join(", ") || "—",
+        screen: "Add Sponsor",
+      });
+      toast(td.sponsorAdded, "success");
+      resetAndClose();
+    });
   };
 
   return (
@@ -102,10 +105,10 @@ export function AddSponsorDrawer({ open, onClose }: Props) {
         <Label>{td.country}</Label>
         <Input value={country} onChange={setCountry} />
 
-        {/* Asset Classes */}
+        {/* Asset Classes — from the live taxonomy */}
         <Label>{td.assetClasses}</Label>
         <div className="flex flex-wrap gap-2 mb-3.5">
-          {ASSET_CLASS_OPTIONS.map((ac) => (
+          {taxonomy.assetClasses.map((ac) => (
             <button
               key={ac}
               type="button"
@@ -120,27 +123,6 @@ export function AddSponsorDrawer({ open, onClose }: Props) {
             </button>
           ))}
         </div>
-
-        {/* Overview */}
-        <Label>{td.overview}</Label>
-        <textarea
-          value={overview}
-          onChange={(e) => setOverview(e.target.value)}
-          rows={3}
-          className="bg-atlas-card border border-atlas-border rounded-[7px] px-3 py-2 text-[12px] text-atlas-off-white outline-none resize-none focus:border-atlas-purple transition-colors mb-3.5"
-        />
-
-        {/* Website */}
-        <Label>{td.website}</Label>
-        <Input value={website} onChange={setWebsite} />
-
-        {/* Contact Name */}
-        <Label>{td.contactName}</Label>
-        <Input value={contactName} onChange={setContactName} />
-
-        {/* Contact Email */}
-        <Label>{td.contactEmail}</Label>
-        <Input value={contactEmail} onChange={setContactEmail} />
 
         {/* Color */}
         <Label>{td.color}</Label>
@@ -161,10 +143,10 @@ export function AddSponsorDrawer({ open, onClose }: Props) {
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={!name.trim() || isSubmitting}
+          disabled={!name.trim()}
           className="w-full mt-5 py-2.5 rounded-lg bg-atlas-purple text-atlas-white text-[13px] font-semibold cursor-pointer border-none disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {isSubmitting ? "…" : td.save}
+          {td.save}
         </button>
         <button
           onClick={resetAndClose}

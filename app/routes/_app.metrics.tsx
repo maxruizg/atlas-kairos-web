@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useLoaderData, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import {
   BarChart,
   Bar,
@@ -9,9 +9,9 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { api } from "~/lib/api.server";
-import { getEntityFromRequest } from "~/lib/entity-context";
-import type { Fund, Sponsor } from "~/lib/types";
+import { useEntity } from "~/lib/entity-context";
+import { useMergedFunds, useMergedSponsors } from "~/lib/use-merged-data";
+import type { Sponsor } from "~/lib/types";
 import { formatCurrency, formatMultiplier, formatIrr, irrColor } from "~/lib/utils";
 import { DarkTip } from "~/components/charts/DarkTip";
 import { useChartColors } from "~/lib/chart-colors";
@@ -21,21 +21,16 @@ import { useT } from "~/lib/use-t";
 
 type MetricType = "grossIrr" | "netIrr" | "tvpi" | "dpi" | "rvpi" | "nav" | "paidIn" | "commitment" | "distributions" | "pctCalled" | "grossMoic" | "netMoic";
 
-export async function loader({ request }: { request: Request }) {
-  const entityId = getEntityFromRequest(request) || undefined;
-  const cookie = request.headers.get("cookie") || undefined;
-  const [funds, sponsors] = await Promise.all([
-    api.getFunds(entityId, undefined, cookie),
-    api.getSponsors(entityId, cookie),
-  ]);
-  return { funds, sponsors };
-}
-
 export default function Metrics() {
-  const { funds, sponsors } = useLoaderData<{
-    funds: Fund[];
-    sponsors: Sponsor[];
-  }>();
+  // Funds + sponsors come from the shared store (Supabase-backed), entity-
+  // filtered here so metrics match the Portfolio Overview exactly (QA #3).
+  const { selectedEntityId } = useEntity();
+  const allFunds = useMergedFunds();
+  const sponsors = useMergedSponsors();
+  const funds = useMemo(
+    () => (selectedEntityId ? allFunds.filter((f) => f.entity_id === selectedEntityId) : allFunds),
+    [allFunds, selectedEntityId]
+  );
 
   const navigate = useNavigate();
   const cc = useChartColors();

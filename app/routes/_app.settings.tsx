@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Form, useLoaderData, useFetcher, useRouteLoaderData } from "react-router";
 import { api, type UserPublic } from "~/lib/api.server";
+import { resolveOrgId, listEntities, listFunds } from "~/lib/supabase.server";
 import { useTheme } from "~/lib/theme-context";
 import { useLang } from "~/lib/lang-context";
 import { useT } from "~/lib/use-t";
@@ -31,11 +32,22 @@ export async function loader({
   request: Request;
 }): Promise<LoaderData> {
   const cookie = request.headers.get("cookie") || undefined;
-  const [entities, funds, organization] = await Promise.all([
-    api.getEntities(cookie),
-    api.getFunds(undefined, undefined, cookie),
-    api.getOrganization(cookie),
-  ]);
+  // Entities + funds from Supabase; org settings still from the (retried) Fly
+  // auth service. All degrade gracefully so a blip never errors the page.
+  let entities: Entity[] = [];
+  let funds: { entity_id: string }[] = [];
+  let organization: Organization = { name: "", onboarded: true };
+  try {
+    const orgId = await resolveOrgId(request);
+    [entities, funds] = await Promise.all([listEntities(orgId), listFunds(orgId)]);
+  } catch {
+    /* Supabase unreachable — show no entities rather than erroring */
+  }
+  try {
+    organization = await api.getOrganization(cookie);
+  } catch {
+    /* keep default org */
+  }
   const fundCountByEntity: Record<string, number> = {};
   for (const e of entities) fundCountByEntity[e.id] = 0;
   for (const f of funds) {

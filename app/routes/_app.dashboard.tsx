@@ -1,8 +1,7 @@
 import { useState, useMemo } from "react";
-import { useLoaderData, useFetcher, isRouteErrorResponse, Link, useNavigate } from "react-router";
-import { api } from "~/lib/api.server";
+import { useFetcher, isRouteErrorResponse, Link, useNavigate } from "react-router";
 import { handleUploadAction } from "~/lib/upload.server";
-import { getEntityFromRequest } from "~/lib/entity-context";
+import { useEntity } from "~/lib/entity-context";
 import type { Fund, Sponsor } from "~/lib/types";
 import { formatCurrency, formatMultiplier, formatIrr, irrColor, moicColor } from "~/lib/utils";
 import { DashboardSkeleton } from "~/components/ui/Skeleton";
@@ -12,33 +11,30 @@ import { MiniDonut } from "~/components/charts/MiniDonut";
 import { ExposureChart } from "~/components/charts/ExposureChart";
 import { VintageCharts } from "~/components/charts/VintageCharts";
 import { InvestmentCounter } from "~/components/ui/InvestmentCounter";
-import { useMergedFunds } from "~/lib/use-merged-data";
+import { useMergedFunds, useMergedSponsors } from "~/lib/use-merged-data";
 import { useClientData } from "~/lib/client-data-context";
 import { useT } from "~/lib/use-t";
-
-export async function loader({ request }: { request: Request }) {
-  const entityId = getEntityFromRequest(request) || undefined;
-  const cookie = request.headers.get("cookie") || undefined;
-  const [funds, sponsors] = await Promise.all([
-    api.getFunds(entityId, undefined, cookie),
-    api.getSponsors(entityId, cookie),
-  ]);
-  return { funds, sponsors };
-}
 
 export async function action({ request }: { request: Request }) {
   return handleUploadAction(request);
 }
 
 export default function Dashboard() {
-  const { funds: loaderFunds, sponsors } = useLoaderData<{
-    funds: Fund[];
-    sponsors: Sponsor[];
-  }>();
-  // Merge client-added/seed funds so KPIs, charts and the counter stay in
-  // sync the moment something is added.
-  const funds = useMergedFunds(loaderFunds);
-  const { directInvestments } = useClientData();
+  // Funds / sponsors / directs all come from the shared store (loaded once in
+  // the _app loader from Supabase), filtered to the selected entity here so the
+  // Portfolio Overview, Sponsors and counters can never disagree (QA #3).
+  const { selectedEntityId } = useEntity();
+  const allFunds = useMergedFunds();
+  const sponsors = useMergedSponsors();
+  const { directInvestments: allDirects } = useClientData();
+  const funds = useMemo(
+    () => (selectedEntityId ? allFunds.filter((f) => f.entity_id === selectedEntityId) : allFunds),
+    [allFunds, selectedEntityId]
+  );
+  const directInvestments = useMemo(
+    () => (selectedEntityId ? allDirects.filter((d) => d.entity_id === selectedEntityId) : allDirects),
+    [allDirects, selectedEntityId]
+  );
   const [showUpload, setShowUpload] = useState(false);
   const fetcher = useFetcher();
   const navigate = useNavigate();

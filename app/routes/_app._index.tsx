@@ -1,10 +1,10 @@
-import { Suspense, lazy, useState } from "react";
-import { useLoaderData, useRouteLoaderData } from "react-router";
-import { api } from "~/lib/api.server";
-import { getEntityFromRequest } from "~/lib/entity-context";
-import { useMergedFunds } from "~/lib/use-merged-data";
+import { Suspense, lazy, useState, useMemo } from "react";
+import { useRouteLoaderData } from "react-router";
+import { resolveOrgId, updateFund } from "~/lib/supabase.server";
+import { useEntity } from "~/lib/entity-context";
+import { useMergedFunds, useMergedSponsors } from "~/lib/use-merged-data";
 import { useClientData } from "~/lib/client-data-context";
-import type { Entity, Fund, Sponsor, Organization } from "~/lib/types";
+import type { Organization } from "~/lib/types";
 import { useT } from "~/lib/use-t";
 import { ClientOnly } from "~/components/util/ClientOnly";
 import { HierarchyView } from "~/components/brain/HierarchyView";
@@ -12,17 +12,6 @@ import { HierarchyView } from "~/components/brain/HierarchyView";
 // BrainGraph imports a browser-only canvas library (react-force-graph-2d), so
 // it must never load during SSR. Lazy + ClientOnly keeps it client-side only.
 const BrainGraph = lazy(() => import("~/components/brain/BrainGraph"));
-
-export async function loader({ request }: { request: Request }) {
-  const entityId = getEntityFromRequest(request) || undefined;
-  const cookie = request.headers.get("cookie") || undefined;
-  const [entities, funds, sponsors] = await Promise.all([
-    api.getEntities(cookie),
-    api.getFunds(entityId, undefined, cookie),
-    api.getSponsors(entityId, cookie),
-  ]);
-  return { entities, funds, sponsors };
-}
 
 export async function action({ request }: { request: Request }) {
   const form = await request.formData();
@@ -33,10 +22,13 @@ export async function action({ request }: { request: Request }) {
     const entityId = String(form.get("entity_id") || "");
     if (!fundId || !entityId)
       return { intent, ok: false, error: "Missing fund or entity id" };
-    const cookie = request.headers.get("cookie") || undefined;
-    const result = await api.updateFundEntity(fundId, entityId, cookie);
-    if (!result.ok) return { intent, ok: false, error: result.error };
-    return { intent, ok: true };
+    try {
+      const orgId = await resolveOrgId(request);
+      await updateFund(orgId, fundId, { entity_id: entityId });
+      return { intent, ok: true };
+    } catch (err) {
+      return { intent, ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   return { intent: "unknown", ok: false, error: "Unknown intent" };
@@ -45,7 +37,6 @@ export async function action({ request }: { request: Request }) {
 type View = "brain" | "hierarchy";
 
 export default function EntityMap() {
-  const data = useLoaderData<{ entities: Entity[]; funds: Fund[]; sponsors: Sponsor[] }>();
   const parentData = useRouteLoaderData("routes/_app") as
     | { organization?: Organization }
     | undefined;
@@ -53,15 +44,17 @@ export default function EntityMap() {
   const t = useT();
   const brain = (t as any).brain;
 
-  const funds = useMergedFunds(data.funds);
-  const { directInvestments, sponsors: clientSponsors, documents } = useClientData();
+  // Everything the Segundo Cerebro graph needs comes from the shared store, so
+  // a newly-added sponsor / fund / direct appears in the graph immediately.
+  const { entities } = useEntity();
+  const funds = useMergedFunds();
+  const sponsors = useMergedSponsors();
+  const { directInvestments, documents } = useClientData();
+  const data = useMemo(() => ({ entities, funds, sponsors }), [entities, funds, sponsors]);
+  const allSponsors = sponsors;
 
   // Default to the new "Segundo Cerebro" knowledge graph.
   const [view, setView] = useState<View>("brain");
-
-  // Sponsors come from the loader; merge in any client-seeded ones for parity
-  // with the rest of the app.
-  const allSponsors = [...data.sponsors, ...clientSponsors];
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">

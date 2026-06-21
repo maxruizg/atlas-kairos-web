@@ -1,71 +1,35 @@
 import { useState, useMemo } from "react";
-import { useLoaderData, Link } from "react-router";
-import { api } from "~/lib/api.server";
-import { getEntityFromRequest } from "~/lib/entity-context";
+import { Link } from "react-router";
 import { useMergedSponsors } from "~/lib/use-merged-data";
-import type { Sponsor } from "~/lib/types";
 import { formatCurrency, formatMultiplier, formatIrr, irrColor } from "~/lib/utils";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
 import { AddSponsorDrawer } from "~/components/drawers/AddSponsorDrawer";
+import { AddFundDrawer } from "~/components/drawers/AddFundDrawer";
 import { InvestmentCounter } from "~/components/ui/InvestmentCounter";
 import { useClientData } from "~/lib/client-data-context";
 import { useCan } from "~/lib/use-permissions";
 import { useT } from "~/lib/use-t";
 
-export async function loader({ request }: { request: Request }) {
-  const entityId = getEntityFromRequest(request) || undefined;
-  const cookie = request.headers.get("cookie") || undefined;
-  const sponsors = await api.getSponsors(entityId, cookie);
-  return { sponsors };
-}
-
-export async function action({ request }: { request: Request }) {
-  const form = await request.formData();
-  const intent = form.get("intent");
-  const cookie = request.headers.get("cookie") || undefined;
-
-  if (intent === "create-sponsor") {
-    const name = String(form.get("name") || "").trim();
-    const initials = String(form.get("initials") || "").trim().toUpperCase();
-    const country = String(form.get("country") || "").trim();
-    const color = String(form.get("color") || "#8B7BD8").trim();
-
-    if (!name) return { intent, ok: false, error: "Name is required" };
-    if (!initials) return { intent, ok: false, error: "Initials are required" };
-
-    const result = await api.createSponsor({ name, initials, country, color }, cookie);
-    if (!result.ok) return { intent, ok: false, error: result.error };
-    return { intent, ok: true };
-  }
-
-  if (intent === "delete-sponsor") {
-    const id = String(form.get("id") || "");
-    if (!id) return { intent, ok: false, error: "Missing sponsor id" };
-    const result = await api.deleteSponsor(id, cookie);
-    if (!result.ok) return { intent, ok: false, error: result.error };
-    return { intent, ok: true };
-  }
-
-  return { intent: "unknown", ok: false, error: "Unknown intent" };
-}
-
 export default function SponsorsIndex() {
-  const loaderData = useLoaderData<{ sponsors: Sponsor[] }>();
-  const sponsors = useMergedSponsors(loaderData.sponsors);
-  const { directInvestments } = useClientData();
+  // Sponsors come from the shared store (Supabase-backed) with aggregates
+  // derived from the same funds the Portfolio Overview sums (QA #3).
+  const sponsors = useMergedSponsors();
+  const { directInvestments, taxonomy } = useClientData();
   const cn = useCan();
   const [search, setSearch] = useState("");
   const [filterAsset, setFilterAsset] = useState<string>("All");
   const [filterGeo, setFilterGeo] = useState<string>("All");
   const [showAddSponsor, setShowAddSponsor] = useState(false);
+  const [showAddFund, setShowAddFund] = useState(false);
   const t = useT();
 
-  // Collect unique asset classes and geographies
+  // Asset-class filter from the single taxonomy source of truth (QA #5), unioned
+  // with any class already on a sponsor so nothing is ever unfilterable.
   const allAssets = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(taxonomy.assetClasses);
     for (const s of sponsors) for (const a of s.asset_classes) set.add(a);
     return ["All", ...Array.from(set)];
-  }, [sponsors]);
+  }, [sponsors, taxonomy.assetClasses]);
 
   const filtered = useMemo(() => {
     return sponsors.filter((s) => {
@@ -92,12 +56,20 @@ export default function SponsorsIndex() {
           </div>
         </div>
         {cn("fund.add") && (
-          <button
-            onClick={() => setShowAddSponsor(true)}
-            className="px-3.5 py-[7px] rounded-lg border-none bg-atlas-purple text-atlas-white text-xs cursor-pointer font-semibold"
-          >
-            + {t.drawers.addSponsor}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowAddFund(true)}
+              className="px-3.5 py-[7px] rounded-lg border border-atlas-border bg-transparent text-atlas-gray2 text-xs cursor-pointer font-semibold hover:border-atlas-gray4 transition-colors"
+            >
+              + {t.drawers.addFund}
+            </button>
+            <button
+              onClick={() => setShowAddSponsor(true)}
+              className="px-3.5 py-[7px] rounded-lg border-none bg-atlas-purple text-atlas-white text-xs cursor-pointer font-semibold"
+            >
+              + {t.drawers.addSponsor}
+            </button>
+          </div>
         )}
       </div>
 
@@ -177,6 +149,7 @@ export default function SponsorsIndex() {
       </div>
 
       <AddSponsorDrawer open={showAddSponsor} onClose={() => setShowAddSponsor(false)} />
+      <AddFundDrawer open={showAddFund} onClose={() => setShowAddFund(false)} />
     </div>
   );
 }

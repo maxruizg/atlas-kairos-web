@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
 import { useLoaderData, Link } from "react-router";
 import { api } from "~/lib/api.server";
+import { resolveOrgId, getFundById, getSponsorById } from "~/lib/supabase.server";
 import { useMergedCompanies } from "~/lib/use-merged-data";
 import { useClientData } from "~/lib/client-data-context";
 import { useDocViewer } from "~/lib/doc-viewer-context";
-import type { Fund, Sponsor, Document } from "~/lib/types";
+import type { Fund, SponsorBase, Document } from "~/lib/types";
 import { formatCurrency, formatMultiplier, formatIrr, irrColor, moicColor } from "~/lib/utils";
 import { SponsorBadge } from "~/components/ui/SponsorBadge";
 import { StatusBadge } from "~/components/ui/StatusBadge";
@@ -25,11 +26,15 @@ export async function loader({
   request: Request;
   params: { sponsorId: string; fundId: string };
 }) {
-  const cookie = request.headers.get("cookie") || undefined;
+  // Fund + sponsor come from Supabase now; missing → 404 to the ErrorBoundary
+  // so the component always renders with defined data.
+  const orgId = await resolveOrgId(request).catch(() => null);
+  if (!orgId) throw new Response("Fund not found", { status: 404 });
   const [fund, sponsor] = await Promise.all([
-    api.getFund(params.fundId, cookie),
-    api.getSponsor(params.sponsorId, cookie),
+    getFundById(orgId, params.fundId),
+    getSponsorById(orgId, params.sponsorId),
   ]);
+  if (!fund || !sponsor) throw new Response("Fund not found", { status: 404 });
   return { fund, sponsor };
 }
 
@@ -75,7 +80,7 @@ type Tab = "companies" | "cashflows" | "nav" | "documents";
 export default function FundDetail() {
   const { fund, sponsor } = useLoaderData<{
     fund: Fund;
-    sponsor: Sponsor;
+    sponsor: SponsorBase;
   }>();
   const companies = useMergedCompanies(fund.id, fund.companies);
   const { documents: allDocs } = useClientData();

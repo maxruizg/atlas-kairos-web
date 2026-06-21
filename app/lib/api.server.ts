@@ -1,4 +1,5 @@
 import type { Entity, Sponsor, Fund, Organization, PortfolioCompany } from "~/lib/types";
+import { fetchWithRetry } from "~/lib/retry";
 
 export const API_BASE =
   process.env.API_URL || "https://app-ancient-smoke-7925.fly.dev/api/v1";
@@ -11,14 +12,21 @@ export interface UserPublic {
   created_at: string;
 }
 
+// The Fly free tier scales to zero, so the first request after idle cold-starts
+// the machine and can 503 for a few seconds. Read paths get extra attempts so a
+// cold start resolves into a slightly slow load rather than a hard error.
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
+  const res = await fetchWithRetry(
+    `${API_BASE}${path}`,
+    {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
     },
-  });
+    { attempts: 5 }
+  );
   if (!res.ok) {
     throw new Response(`API error: ${res.statusText}`, { status: res.status });
   }
@@ -37,7 +45,7 @@ async function fetchApiResult<T>(
   path: string,
   options?: RequestInit
 ): Promise<ApiResult<T>> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchWithRetry(`${API_BASE}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",

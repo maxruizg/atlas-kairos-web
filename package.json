@@ -9,7 +9,8 @@
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
     "lint": "eslint .",
-    "seed:docs": "node scripts/seed-documents.mjs"
+    "seed:docs": "node scripts/seed-documents.mjs",
+    "seed:koval": "node scripts/seed-koval.mjs"
   },
   "dependencies": {
     "@react-router/node": "^7.1.3",

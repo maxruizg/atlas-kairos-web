@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Drawer } from "~/components/ui/Drawer";
 import { useEntity } from "~/lib/entity-context";
 import { useToast } from "~/lib/toast-context";
+import { useLang } from "~/lib/lang-context";
 import { useClientData } from "~/lib/client-data-context";
 import { useGuard } from "~/lib/use-permissions";
 import { useT } from "~/lib/use-t";
@@ -25,15 +26,19 @@ interface Props {
 
 const TODAY = "2026-06-03";
 
+/** Strip thousands separators / spaces so "1,000,000" parses as a number. */
+const clean = (s: string) => String(s).replace(/[,\s]/g, "");
+
 function numError(raw: string): boolean {
   if (raw.trim() === "") return false;
-  const n = Number(raw);
+  const n = Number(clean(raw));
   return Number.isNaN(n) || n < 0;
 }
 
 export function AddDirectInvestmentDrawer({ open, onClose }: Props) {
   const { entities } = useEntity();
   const { toast } = useToast();
+  const { lang } = useLang();
   const t = useT();
   const td = t.drawers;
   const { taxonomy, addDirect, logAudit } = useClientData();
@@ -62,7 +67,7 @@ export function AddDirectInvestmentDrawer({ open, onClose }: Props) {
     }
   }, [open]);
 
-  const num = (s: string) => parseFloat(s) || 0;
+  const num = (s: string) => parseFloat(clean(s)) || 0;
   const moic = num(cost) > 0 ? num(valuation) / num(cost) : 0;
 
   const errs = {
@@ -111,7 +116,23 @@ export function AddDirectInvestmentDrawer({ open, onClose }: Props) {
 
   const commit = (keepOpen: boolean) => {
     setSubmitted(true);
-    if (!name.trim() || !entityId || hasErrors) return;
+    if (!name.trim() || !entityId || hasErrors) {
+      // The original bug returned here silently — no toast, no POST, panel
+      // stuck open. Always tell the user exactly what is blocking the save.
+      const msg = !name.trim()
+        ? td.requiredField
+        : !entityId
+        ? entities.length === 0
+          ? lang === "es"
+            ? "Crea una entidad antes de agregar una inversión."
+            : "Create an entity before adding an investment."
+          : td.requiredField
+        : lang === "es"
+        ? "Revisa los campos marcados en rojo."
+        : "Check the fields highlighted in red.";
+      toast(msg, "warning");
+      return;
+    }
     guard("direct.add", () => {
       const d = build();
       addDirect(d);
