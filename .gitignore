@@ -5,3 +5,7 @@ node_modules
 .env
 .react-router
 .vercel
+
+# Confidential client document corpus (never commit)
+../.client-data/
+scripts/extract/output/

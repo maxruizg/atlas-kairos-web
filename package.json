@@ -10,7 +10,8 @@
     "typecheck": "react-router typegen && tsc",
     "lint": "eslint .",
     "seed:docs": "node scripts/seed-documents.mjs",
-    "seed:koval": "node scripts/seed-koval.mjs"
+    "seed:koval": "node scripts/seed-koval.mjs",
+    "extract:docs": "node scripts/extract/extract.mjs"
   },
   "dependencies": {
     "@react-router/node": "^7.1.3",
@@ -23,6 +24,7 @@
     "recharts": "^3.7.0"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.105.0",
     "@react-router/dev": "^7.1.3",
     "@tailwindcss/vite": "^4.0.0",
     "@types/react": "^19.0.1",

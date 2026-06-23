@@ -25,31 +25,44 @@ import { DEFAULT_TAXONOMY } from "~/lib/taxonomy";
 import type { Entity, Organization, DirectInvestment, TaxonomyLists, AuditEntry, Document, GraphNodeMeta, Fund, SponsorBase } from "~/lib/types";
 
 export async function loader({ request }: { request: Request }) {
-  const session = getSessionFromRequest(request);
-  if (!session) {
-    throw redirect("/login");
-  }
-
-  // Fetch the current user (forwards the browser cookie). If `me` 401s
-  // then the session is gone — bounce to login.
   const cookie = request.headers.get("cookie") || undefined;
-  const meResult = await api.getMe(cookie);
-  if (!meResult.ok) {
-    throw redirect("/login", {
-      headers: { "Set-Cookie": "atlas-session=;path=/;max-age=0" },
-    });
-  }
-  const user = meResult.data;
 
-  // Fetch the tenant settings — gate the rest of the app on onboarding.
+  // ── TEMP DEV PREVIEW BYPASS — remove before commit ──────────────────────
+  // Renders the seeded hosted-Supabase portfolio under `npm run dev` without
+  // the Rust auth backend running locally. Auto-disabled in production builds
+  // (NODE_ENV === "production"), so it never affects the deployed app.
+  const DEV_BYPASS = process.env.NODE_ENV !== "production";
+
+  let user: UserPublic;
   let organization: Organization = { name: "", onboarded: false };
-  try {
-    organization = await api.getOrganization(cookie);
-  } catch {
-    throw redirect("/onboarding");
-  }
-  if (!organization.onboarded) {
-    throw redirect("/onboarding");
+
+  if (DEV_BYPASS) {
+    user = { id: "dev-preview", name: "Altavena Family Office", email: "dev@altavena.example", role: "owner" } as UserPublic;
+    organization = { name: "Altavena Family Office", onboarded: true };
+  } else {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      throw redirect("/login");
+    }
+    // Fetch the current user (forwards the browser cookie). If `me` 401s
+    // then the session is gone — bounce to login.
+    const meResult = await api.getMe(cookie);
+    if (!meResult.ok) {
+      throw redirect("/login", {
+        headers: { "Set-Cookie": "atlas-session=;path=/;max-age=0" },
+      });
+    }
+    user = meResult.data;
+
+    // Fetch the tenant settings — gate the rest of the app on onboarding.
+    try {
+      organization = await api.getOrganization(cookie);
+    } catch {
+      throw redirect("/onboarding");
+    }
+    if (!organization.onboarded) {
+      throw redirect("/onboarding");
+    }
   }
 
   const theme = getThemeFromRequest(request);
