@@ -73,6 +73,7 @@ async function upsert(table, rows, conflict = "id") {
 }
 
 async function resolveOrgId() {
+  if (process.env.ORG_ID) return process.env.ORG_ID;
   const onboarded = await rest(`/organizations?onboarded=eq.true&select=id&order=created_at.asc&limit=1`);
   if (onboarded?.[0]?.id) return onboarded[0].id;
   const any = await rest(`/organizations?select=id&limit=1`);
